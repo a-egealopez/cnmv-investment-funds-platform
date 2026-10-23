@@ -4,7 +4,7 @@
 
 ### Project
 
-**CNMV Fund Intelligence Platform**
+**CNMV Investment Funds Platform**
 
 ### Objective
 
@@ -515,18 +515,24 @@ Potential marts:
 ├── README.md
 ├── docker-compose.yml
 │
-├── dags/
+├── dags/                       # Airflow (Objective 6)
 │   ├── cnmv_ingestion.py
 │   ├── cnmv_validation.py
 │   └── cnmv_pipeline.py
 │
-├── spark/
-│   ├── ingestion/
-│   ├── parsing/
-│   ├── normalization/
-│   └── jobs/
+├── ingestion/                  # I/O puro (HTTP/filesystem), sin Spark
+│   └── download_history.py
 │
-├── dbt/
+├── spark/
+│   ├── common/                 # session helpers
+│   ├── parsing/                # fuente CNMV (XML) → DataFrame Silver-ready
+│   │   ├── fondmens.py
+│   │   └── fondregistro.py
+│   └── jobs/                   # entrypoints ejecutables
+│       ├── build_silver.py
+│       └── validate_silver.py
+│
+├── dbt/                        # Objective 5
 │   ├── models/
 │   │   ├── staging/
 │   │   ├── intermediate/
@@ -547,10 +553,16 @@ Potential marts:
 │   └── integration/
 │
 └── docs/
-    ├── architecture/
-    ├── data_dictionary/
-    └── decisions/
+    ├── business/                 # qué construimos y por qué
+    ├── analytics/                # datos y métricas
+    └── technical/                # cómo está construido + decisiones
 ```
+
+Notes on the structure:
+
+* `ingestion/` lives at the top level, not under `spark/`: downloading from the CNMV website is HTTP I/O, not distributed processing. Spark would add overhead with no benefit (the bottleneck is the remote server, not the CPU).
+* `spark/normalization/` is intentionally absent. Structural normalization (casts, date derivation, unpivoting) lives inside the parsers; semantic normalization (flags, quarantine, derived metrics) belongs to dbt on top of typed Silver tables. Create `spark/normalization/` only when a real Spark-level need appears (e.g., cross-source entity resolution).
+* Silver entity names (`fund_nav_daily`, `fund_metadata`) are the data-layer contract; parser modules are named by CNMV source file (`fondmens.py`, `fondregistro.py`) because each maps one source to one entity.
 
 Do not commit large raw datasets to Git.
 
@@ -910,13 +922,20 @@ The goal is to become capable of building increasingly sophisticated systems whi
 ## Project-Specific Documentation
 
 ### Data Sources
--  — Detailed description of all datasets
+- `docs/analytics/sources.md` — Detailed description of all datasets
+- `docs/analytics/financial_metrics.md` — Metric definitions and formulas
 
 ### Architecture & Tools
--  — Toolchain decisions and pipeline architecture
+- `docs/technical/architecture.md` — Toolchain decisions and pipeline architecture
+- `docs/technical/parsing_decisions.md` — Decisions behind the bronze→Silver parsers
 
 ### Business Questions
--  — Business questions and metrics
+- `docs/business/business_questions.md` — Business questions and metrics
+- `docs/business/discovery.md` — Product discovery (problem, users, rationale)
+
+### Data Quality
+- `notebooks/exploration/01_profiling_silver.ipynb` §8 — Findings and promotion table
+- `spark/jobs/validate_silver.py` (`FINDINGS`) — Executable gate contract
 
 ### Current Objective
 - Objective B: Panoramica + Seleccion de fondos para analisis de compra/venta

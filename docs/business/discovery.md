@@ -1,4 +1,4 @@
-# CNMV Fund Intelligence Platform — Product Discovery
+# CNMV Investment Funds Platform — Product Discovery
 
 **Version**: 0.1 | **Date**: 2026-09-26 | **Status**: Draft
 
@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary
 
-The CNMV Fund Intelligence Platform is a data engineering pipeline that transforms raw CNMV regulatory XML into actionable investment fund intelligence. It automates the full workflow from data ingestion to a ranked fund table based on risk-adjusted performance metrics, providing individual investors and financial analysts with a free, data-driven tool for fund selection.
+The CNMV Investment Funds Platform is a data engineering pipeline that transforms raw CNMV regulatory XML into actionable investment fund intelligence. It automates the full workflow from data ingestion to a ranked fund table based on risk-adjusted performance metrics, providing individual investors and financial analysts with a free, data-driven tool for fund selection.
 
 ## 2. Problem Statement
 
@@ -54,7 +54,7 @@ The platform produces a ranked fund table with the following metrics: CAGR, Sort
 
 ## 8. Technical Approach
 
-The platform uses PySpark for XML parsing, DuckDB for analytical storage, dbt for SQL transformations, and Jupyter for exploration. This stack was chosen for its ability to handle nested XML, support advanced SQL (window functions, CTEs), and remain lightweight enough for a solo developer. See `docs/architecture.md` for details.
+The platform uses PySpark for XML parsing, DuckDB for analytical storage, dbt for SQL transformations, and Jupyter for exploration. This stack was chosen for its ability to handle nested XML, support advanced SQL (window functions, CTEs), and remain lightweight enough for a solo developer. See `docs/technical/architecture.md` for details.
 
 ## 9. Roadmap
 
