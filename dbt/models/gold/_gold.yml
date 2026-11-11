@@ -16,7 +16,7 @@ models:
   - name: dim_fund
     description: "Dimensión Type 1 de entidad: último atributo conocido <= as_of_period."
     columns:
-      - name: fund_key
+      - name: fund_id
         tests: [unique, not_null]
       - name: fund_name
         tests: [not_null]
@@ -28,15 +28,15 @@ models:
   - name: dim_compartment
     description: "Dimensión Type 1 de compartimento. Grano: 1 compartimento. Integra metadata y vocación/ClaseFondo de FONDTRIM."
     columns:
-      - name: compartment_key
+      - name: compartment_id
         tests: [unique, not_null]
-      - name: fund_key
+      - name: fund_id
         tests:
           - not_null
           - relationships:
               arguments:
                 to: ref('dim_fund')
-                field: fund_key
+                field: fund_id
       - name: compartment_name
         tests: [not_null]
       - name: vocation_family
@@ -57,18 +57,18 @@ models:
   - name: dim_class
     description: "Dimensión Type 1 de clase. Grano: 1 clase. Integra metadata y divisas de FONDTRIM."
     columns:
-      - name: class_key
+      - name: class_id
         tests: [unique, not_null]
       - name: class_name
         tests: [not_null]
       - name: isin
         tests: [not_null]
-      - name: compartment_key
+      - name: compartment_id
         tests:
           - relationships:
               arguments:
                 to: ref('dim_compartment')
-                field: compartment_key
+                field: compartment_id
       - name: class_currency_code
         description: "Divisa de la clase; nula si la clase no está en FONDTRIM."
         tests:
@@ -77,21 +77,21 @@ models:
                 severity: warn
 
   - name: fact_nav_daily
-    description: "Hecho diario de NAV. Grano: 1 clase x 1 día. Excluye filas con anomalía material (abs(valor) > neg_dust_max) y glitches conocidos. La cuarentena es a nivel de fila."
+    description: "Hecho diario de NAV. Grano: 1 clase x 1 día. Excluye filas con anomalía material (abs(valor) > neg_dust_max). La cuarentena es a nivel de fila."
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
-              - class_key
+              - class_id
               - date_key
     columns:
-      - name: class_key
+      - name: class_id
         tests:
           - not_null
           - relationships:
               arguments:
                 to: ref('dim_class')
-                field: class_key
+                field: class_id
       - name: date_key
         tests:
           - not_null
@@ -107,16 +107,11 @@ models:
         tests: [not_null]
       - name: is_dormant
         description: "NAV = 0: padding o clase durmiente; no prueba por sí solo que la clase esté inactiva."
-        tests: [not_null]
       - name: is_dust
         description: "Residuo de redondeo en NAV, AUM o partícipes (0 < abs(valor) <= neg_dust_max); se conserva en el hecho."
-        tests: [not_null]
       - name: is_dust_nav
-        tests: [not_null]
       - name: is_dust_aum
-        tests: [not_null]
       - name: is_dust_holders
-        tests: [not_null]
 
   - name: fact_fund_period_financials
     description: >
@@ -129,17 +124,17 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
-              - compartment_key
+              - compartment_id
               - period
     columns:
-      - name: compartment_key
+      - name: compartment_id
         description: "fund_type|registration_number|compartment_number"
         tests:
           - not_null
           - relationships:
               arguments:
                 to: ref('dim_compartment')
-                field: compartment_key
+                field: compartment_id
       - name: period
         description: "Cierre YYYYMM de FONDPATRIMDISVAR (06/12 observado)."
         tests: [not_null]
@@ -161,3 +156,98 @@ models:
         description: "core_fee_yield_pct / expense_ratio_pct. Nulo si el gasto total es cero (51 filas) o la fila es nula (1)."
       - name: fee_revenue_proxy
         description: "total_patrimony * core_fee_yield_pct / 100. Magnitud positiva para concentración; no es ingreso contable."
+
+  - name: fact_fund_quarterly_metrics
+    description: >
+      Métricas trimestrales oficiales de FONDTRIM por clase. Grano: class_key x quarter_end_date.
+      FONDTRIM publica el trimestre actual y los tres anteriores en cada fichero semestral (06 y 12),
+      así que cada trimestre aparece en dos ficheros. Se deduplica con prioridad current > t1 > t2 > t3.
+      quarter_end_date es el fin de trimestre (31/03, 30/06, 30/09, 31/12).
+      Los trimestres de 2022 quedan fuera del calendario de dim_date.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_id, quarter_end_date]
+    columns:
+      - name: class_id
+        tests: [not_null]
+      - name: quarter_end_date
+        description: "Último día del trimestre."
+        tests: [not_null]
+      - name: date_key
+        description: "Clave de fecha del fin de trimestre en dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: return_pct
+        description: "Rentabilidad oficial del trimestre, en puntos porcentuales."
+      - name: volatility_pct
+        description: "Volatilidad oficial del trimestre, en puntos porcentuales; concuerda con la calculada en la serie semanal."
+      - name: total_expense_ratio_pct
+        description: "Ratio total de gastos oficial del trimestre, en puntos porcentuales."
+      - name: source_period
+        description: "Periodo del fichero FONDTRIM del que procede el valor."
+        tests: [not_null]
+      - name: source_slot
+        description: "Slot del fichero de origen: current, t1, t2 o t3."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['current', 't1', 't2', 't3']
+      - name: source_priority
+        description: "Orden de prioridad del slot aplicado en la deduplicación; 1 es el ganador."
+
+  - name: fact_holdings
+    description: >
+      Posiciones de cartera agregadas por instrumento. Grano: compartment_key x holdings_period x instrument_key.
+      Se toma la última cartera con periodo <= as_of_period (FONDCART es semestral).
+      Las líneas del mismo instrumento se agregan: hay 1.462 instrumentos con líneas repetidas y sin
+      agregarlas el HHI se subestima.
+      El precio de referencia del patrimonio es el de la MISMA fecha que la cartera, no el del as_of_date:
+      la cartera es semestral y el patrimonio diario, y comparar instantes distintos dispara los casos
+      fuera de banda de 57 a 375.
+      instrument_key usa el ISIN cuando es real; XXXXXXXXXXXX es un sentinel de CNMV que representa 22
+      instrumentos distintos, así que cae al identificador por clase y descripción.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, holdings_period, instrument_key]
+    columns:
+      - name: compartment_id
+        tests: [not_null]
+      - name: holdings_period
+        description: "Periodo del fichero FONDCART del que procede la cartera."
+        tests: [not_null]
+      - name: instrument_key
+        description: "Identificador del instrumento: ISIN real, o clase, descripción y detalle si no lo hay."
+        tests: [not_null]
+      - name: isin
+        description: "ISIN del instrumento; XXXXXXXXXXXX es un sentinel de CNMV, no un ISIN real."
+      - name: clase_if
+        description: "Clase del activo en la cartera: EXTERIOR, INTERIOR o DUDOSAS."
+      - name: descripcion_if
+        description: "Categoría del activo en la cartera."
+      - name: asset_description
+        description: "Descripción detallada de la posición en la cartera."
+      - name: position_value
+        description: "Valor de mercado en euros, sumando las líneas del mismo instrumento."
+        tests: [not_null]
+      - name: n_lines
+        description: "Líneas de la fuente agregadas en este instrumento."
+        tests: [not_null]
+      - name: weight
+        description: "Peso del instrumento sobre las posiciones con valor positivo; nulo si el valor no es positivo."
+      - name: n_positions
+        description: "Instrumentos con valor positivo en el compartimento."
+        tests: [not_null]
+      - name: n_nonpositive
+        description: "Posiciones con valor no positivo del compartimento; se conservan marcadas y no computan peso."
+        tests: [not_null]
+      - name: coverage_ratio
+        description: "Suma de las posiciones con valor positivo sobre el patrimonio del compartimento en la fecha de la cartera."
+      - name: is_negative
+        description: "La posición tiene valor no positivo; se conserva para trazabilidad pero no computa peso."

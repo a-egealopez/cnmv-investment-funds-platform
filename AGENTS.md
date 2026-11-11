@@ -934,10 +934,12 @@ The goal is to become capable of building increasingly sophisticated systems whi
 - `docs/business/discovery.md` — Product discovery (problem, users, rationale)
 
 ### Data Quality
-- `notebooks/exploration/01_profiling_silver.ipynb` §8 — Findings and promotion table
+- `notebooks/exploration/01_fondmens_fondregistro__nav_metadata_anomaly_profiling.ipynb` §8 — Findings and decisions table
+- `notebooks/exploration/03_fondpatrimdisvar__financial_contract_profiling.ipynb` — FONDPATRIMDISVAR contract, units, identities and implications
 - `spark/jobs/validate_silver.py` (`FINDINGS`) — Executable gate contract
 
 ### Current Objective
-- Objective B: Panoramica + Seleccion de fondos para analisis de compra/venta
-- Sources: FONDMENS (masivo), FONDREGISTRO (masivo), IPP per-fund
-- Universe: ~20 fondos seleccionados por rendimiento/volumen
+- Objective B: Panorama + watchlist + flujos/comisiones/calidad del dato (dual: Deals/Financial Analytics y Data Engineer).
+- Sources: FONDMENS, FONDREGISTRO, FONDTRIM, FONDCART, FONDPATRIMDISVAR (masivos) and ECB €STR; IPP per-fund deferred.
+- Universe: ~20 fondos seleccionados por rendimiento/volumen.
+- Plan: `PLAN.md` v0.4 (D1–D23) and `ROADMAP.md` (Release 1 Deals, Release 2 Azure/DE).

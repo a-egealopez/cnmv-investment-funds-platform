@@ -1,19 +1,14 @@
 {{ config(severity='warn') }}
 
--- Identidades del estado de resultados de FONDPATRIMDISVAR.
--- Unidad: puntos porcentuales (pp). Los gastos llegan negativos en el XML.
---   GR  = GastosRepercutidos
---   ING = Ingresos
---   RN  = RendimientosNetos
---   RG  = RendimientosGestion
--- La tolerancia 0,05 pp absorbe el redondeo de los componentes a 2 decimales.
+-- Income statement identities. Unit: pp. Expenses negative in XML.
+-- GR = ChargedExpenses; ING = Income; RN = NetReturn; RG = ManagementReturn.
+-- Tolerance: 0.05pp absorbs 2-decimal rounding.
 
 with residuals as (
-    -- GR: GastosRepercutidos = ComisionGestion + ComisionDepositario
-    --     + GastosServiciosExteriores + OtrosGastosGestion + OtrosGastosRepercutidos
+    -- GR: ChargedExpenses = Management + Depositary + ExternalServices + OtherMgmt + OtherCharged
     select
         'GR' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(charged_expenses_pct - (
             management_fee_pct
@@ -22,48 +17,44 @@ with residuals as (
             + other_management_expenses_pct
             + other_charged_expenses_pct)
         ) as residual
-    from
-        {{ ref('fact_fund_period_financials') }}
+    from {{ ref('fact_fund_period_financials') }}
 
     union all
 
-    -- ING: Ingresos = ComisionesDescuento + ComisionesRetrocedidas + OtrosIngresos
+    -- ING: Income = DiscountCommissions + RetrocededCommissions + OtherRevenues
     select
         'ING' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(income_pct - (
             discount_commissions_pct
             + retroceded_commissions_pct
             + other_revenues_pct)
         ) as residual
-    from
-        {{ ref('fact_fund_period_financials') }}
+    from {{ ref('fact_fund_period_financials') }}
 
     union all
 
-    -- RN: RendimientosNetos = RendimientosGestion + GastosRepercutidos + Ingresos
-    --     (con el signo del XML: GastosRepercutidos ya es negativo)
+    -- RN: NetReturn = ManagementReturn + ChargedExpenses + Income
+    -- (XML sign: ChargedExpenses already negative)
     select
         'RN' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(net_return_pct - (
             management_return_pct
             + charged_expenses_pct
             + income_pct)
         ) as residual
-    from
-        {{ ref('fact_fund_period_financials') }}
+    from {{ ref('fact_fund_period_financials') }}
 
     union all
 
-    -- RG: RendimientosGestion = Intereses + Dividendos + ResultadosRentaFija
-    --     + ResultadosRentaVariable + ResultadosDepositos + ResultadosDerivados
-    --     + ResultadosIIC + OtrosResultados + OtrosRendimientos
+    -- RG: ManagementReturn = Interest + Dividend + FixedIncomeResults + EquityResults
+    --     + DepositResults + DerivativesResults + IICResults + OtherResults + OtherReturns
     select
         'RG' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(
             management_return_pct

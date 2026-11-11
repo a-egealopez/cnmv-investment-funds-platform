@@ -7,7 +7,7 @@ select
     c.value_date,
     c.fund_key,
     c.compartment_key,
-    c.class_key,
+    cl.class_id,
     c.isin,
     c.fund_type,
     c.registration_number,
@@ -18,8 +18,8 @@ select
     c.holders,
     c.is_material,
     c.is_dust,
-    c.is_known_issue,
     c.quarantine_reason
 from classified as c
+inner join {{ ref('dim_class') }} as cl
+    on cl.class_key = c.class_key
 where c.is_material
-   or c.is_known_issue

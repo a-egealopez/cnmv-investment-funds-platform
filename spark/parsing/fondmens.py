@@ -104,7 +104,7 @@ EXPECTED_SCHEMA = StructType(
 def parse_fondmens_xml(spark, path):
     df = spark.read.schema(INPUT_SCHEMA).xml(path, rowTag="FondMens")
 
-    # Flatten entity -> compartment -> class
+    # Flatten entity, compartment and class levels
     df = df.select("FechaDatos", explode("Entidad").alias("ent"))
     df = df.select(
         "FechaDatos",

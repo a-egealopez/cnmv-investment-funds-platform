@@ -1,24 +1,6 @@
 version: 2
 
 seeds:
-  - name: known_data_issues
-    description: "Incidencias de plataforma conocidas y auditadas. Cada fila marca un rango de fechas de una clase como cuarentena."
-    config:
-      column_types:
-        start_date: date
-        end_date: date
-    columns:
-      - name: issue_id
-        tests: [unique, not_null]
-      - name: class_key
-        tests: [not_null]
-      - name: start_date
-        tests: [not_null]
-      - name: end_date
-        tests: [not_null]
-      - name: reason
-        tests: [not_null]
-
   - name: vocation_aliases
     description: "Alias de vocaciones con erratas en la fuente CNMV. La clave es el valor literal del XML."
     columns:

@@ -3,11 +3,11 @@ cnmv:
   outputs:
     local:
       type: duckdb
-      path: "data/gold/cnmv.duckdb"
+      path: "../data/gold/cnmv.duckdb"
       schema: main
       threads: 4
     ci:
       type: duckdb
-      path: "data/gold/cnmv_ci.duckdb"
+      path: "../data/gold/cnmv_ci.duckdb"
       schema: main
       threads: 4

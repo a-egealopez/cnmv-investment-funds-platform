@@ -4,7 +4,89 @@ config-version: 2
 profile: cnmv
 
 vars:
+  # Analysis and exclusion of signed values.
   neg_dust_max: 1
+    # Negative amount that separates material anomaly from rounding dust.
+    # Origin: notebook 01, §8. Base: |v| > 1 is material.
+
+  # Analysis window and weekly series quality.
+  window_months: 36
+    # Months of history covered by the analysis window.
+    # Origin: Morningstar. Base: requires 36 months of continuous history.
+  min_coverage: 0.90
+    # Minimum week coverage over expected.
+    # Origin: notebook 02, §4. Base: 2,211 classes with coverage 1.00 against a ceiling of 0.98.
+  max_gap_weeks: 1
+    # Consecutive weeks without liquidation value tolerated within the window.
+    # Origin: ESMA SRRI. Base: weekly non-overlapping returns do not admit a gap.
+  max_edge_gap_weeks: 1
+    # Consecutive weeks without liquidation value tolerated at the window edges.
+    # Origin: notebook 02, §4. Base: launched or closed classes within the window.
+  extreme_return_abs: 0.50
+    # Absolute weekly return from which the class goes into quarantine.
+    # Origin: notebook 02, §4. Base: only 2 active classes exceed it.
+  max_zero_week_share: 0.03
+    # Maximum proportion of zero-return weeks before excluding the class.
+    # Origin: notebook 02, §4. Base: p95 0.0064 and p99 0.019.
+
+  # Compartment and entity eligibility.
+  min_aum_compartment: 3000000
+    # Minimum compartment heritage in euros.
+    # Origin: project decision. Base: common sense filter, no regulatory minimum.
+  min_participants_compartment: 20
+    # Minimum participants of the compartment.
+    # Origin: project decision. Base: IIC Regulation exempts investment vehicles.
+  min_participants_entity: 100
+    # Minimum participants of the entity summing its classes.
+    # Origin: project decision. Base: upper limit, one participant in two classes counts twice.
+  watchlist_currency: EUR
+    # Currency of the class required to enter the watchlist.
+    # Origin: notebook 02, §2. Base: entity level has 411 nulls, class level none.
+
+  # Watchlist selection and sizing.
+  min_peer_group_size: 5
+    # Number of funds of the same vocation needed to calculate a percentile.
+    # Origin: Morningstar. Base: no valuation published with less than five.
+  watchlist_per_family: 5
+    # Maximum funds selected per vocation family.
+    # Origin: project decision. Base: concentration limits of the selection.
+  max_per_vocacion: 2
+    # Maximum funds selected per vocation.
+    # Origin: project decision. Base: concentration limits of the selection.
+  watchlist_max: 20
+    # Maximum funds selected in total.
+    # Origin: project decision. Base: concentration limits of the selection.
+
+  # Reported portfolio fidelity over heritage.
+  min_holdings_coverage: 0.80
+    # Minimum reported portfolio coverage over heritage.
+    # Origin: notebook 02, §5. Base: 5th percentile of 0.836 and 47 compartments below.
+  max_holdings_coverage: 1.20
+    # Maximum reported portfolio coverage over heritage.
+    # Origin: notebook 02, §5. Base: 5 compartments above and maximum of 6.98.
+
+  # Flows, commissions and data quality.
+  min_downside_dev: 0.001
+    # Floor of the annualized downward deviation.
+    # Origin: provisional calibration of this session. Base: percentile 1 of 0.00083, percentile 5 of 0.00179 and median of 0.0358.
+  max_outflow_yield: -0.10
+    # Maximum heritage decline due to net outflows.
+    # Origin: uncalibrated proposal. Base: pending measurement on the flows series.
+  min_flow_periods: 2
+    # Periods with flow required before considering the metric valid.
+    # Origin: project decision. Base: avoids reading a single period as a trend.
+  max_fee_yield: 0.05
+    # Maximum expense yield over heritage.
+    # Origin: uncalibrated proposal. Base: pending measurement on the commissions series.
+  max_recon_error: 0.01
+    # Maximum reconciliation error between FONDMENS and FONDTRIM.
+    # Origin: uncalibrated proposal. Base: pending measurement on common closings.
+  min_distribution_drop: 0.03
+    # Minimum liquidation value drop for a dividend distribution to be distinguished from daily noise.
+    # Origin: calibration of this session. Base: 2,871 distributions at 3%, 45,609 at 1% and 127,234 at 0.5%.
+  max_hhi_asset_type: null
+    # Maximum concentration by asset type.
+    # Origin: pending. Base: depends on portfolio model, which does not exist yet.
 
 model-paths: ["models"]
 seed-paths: ["seeds"]

@@ -15,12 +15,17 @@ latest_quarterly as (
 )
 
 select
+    row_number() over (order by m.class_key) as class_id,
     m.class_key,
     m.compartment_key,
+    p.compartment_id,
     m.class_number,
     m.class_name,
     m.isin,
     q.class_currency_code,
     q.iic_currency_code
 from latest_metadata as m
-left join latest_quarterly as q using (class_key)
+left join latest_quarterly as q
+    on q.class_key = m.class_key
+left join {{ ref('dim_compartment') }} as p
+    on p.compartment_key = m.compartment_key

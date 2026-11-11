@@ -1,17 +1,7 @@
 with source as (
-    select * from {{ ref('stg_fund_nav_daily') }}
-),
-
-known_issues as (
-    select
-        s.class_key,
-        s.value_date,
-        string_agg(k.reason, '; ' order by k.reason) as issue_reason
-    from {{ ref('stg_fund_nav_daily') }} as s
-    inner join {{ ref('known_data_issues') }} as k
-        on s.class_key = k.class_key
-       and s.value_date between k.start_date and k.end_date
-    group by s.class_key, s.value_date
+    select *
+    from
+        {{ ref('stg_fund_nav_daily') }}
 )
 
 select
@@ -37,20 +27,14 @@ select
         or {{ is_dust_negative('s.holders') }}
     ) as is_dust,
 
-    k.issue_reason is not null as is_known_issue,
-
     nullif(
         concat_ws(
             '; ',
             case when {{ is_material_negative('s.nav') }} then 'negative_nav_material' end,
             case when {{ is_material_negative('s.aum') }} then 'negative_aum_material' end,
-            case when {{ is_material_negative('s.holders') }} then 'negative_holders_material' end,
-            k.issue_reason
+            case when {{ is_material_negative('s.holders') }} then 'negative_holders_material' end
         ),
         ''
     ) as quarantine_reason
-
-from source as s
-left join known_issues as k
-    on s.class_key = k.class_key
-   and s.value_date = k.value_date
+from
+    source as s

@@ -7,6 +7,7 @@ import argparse
 import csv
 import datetime as dt
 import hashlib
+import shutil
 import time
 import zipfile
 from pathlib import Path
@@ -23,6 +24,7 @@ RAW_DIR = Path("data/raw")
 BRONZE_DIR = Path("data/bronze")
 MANIFEST_PATH = RAW_DIR / "manifest.csv"
 MANIFEST_FIELDS = ["periodo", "url", "downloaded_at", "sha256", "bytes", "zip_name"]
+COMPLETE_MARKER = ".complete"
 
 MESES = {
     "Enero": "01",
@@ -169,14 +171,23 @@ def download_with_manifest(periodo: str, url: str) -> Path:
 def extract_to_bronze(
     periodo: str, zip_path: Path, bronze_dir: Path = BRONZE_DIR
 ) -> Path:
-    """Unzip into bronze/cnmv_YYYYMM/ and validate the expected files."""
-    destino = bronze_dir / f"cnmv_{periodo}"
+    """Unzip into bronze/cnmv_YYYYMM/ and validate the expected files.
 
-    # FONDMENS present -> a previous extraction completed (idempotency sentinel)
-    if (destino / f"FONDMENS_{periodo}.xml").exists():
+    A `.complete` marker stores the source zip hash. The extraction is reused
+    only when the marker exists and matches the current zip; a partial or stale
+    directory is discarded and rebuilt from the immutable raw zip.
+    """
+    destino = bronze_dir / f"cnmv_{periodo}"
+    marker = destino / COMPLETE_MARKER
+    zip_sha256 = sha256_of(zip_path)
+
+    if marker.exists() and marker.read_text().strip() == zip_sha256:
         return destino
 
+    if destino.exists():
+        shutil.rmtree(destino)
     destino.mkdir(parents=True, exist_ok=True)
+
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(destino)
 
@@ -205,6 +216,7 @@ def extract_to_bronze(
     if faltantes:
         raise ValueError(f"missing expected files in {destino}: {', '.join(faltantes)}")
 
+    marker.write_text(zip_sha256 + "\n")
     return destino
 
 

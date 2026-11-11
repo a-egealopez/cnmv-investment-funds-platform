@@ -10,12 +10,17 @@ from spark.jobs.validate_silver import (
     NAV_WITHOUT_AUM,
     NEG_DUST_MAX,
     Report,
+    bronze_periods,
+    check_estr_series,
     check_meta_schema,
     check_nav_schema,
+    compare_periods,
+    expected_artifact_periods,
     frozen_vl_runs,
     isin_changed_keys,
     isin_reused_keys,
     meta_without_nav,
+    report_period_coverage,
     run_gate,
 )
 from spark.parsing.fondmens import EXPECTED_SCHEMA as NAV_SCHEMA
@@ -318,3 +323,61 @@ def test_schema_check_exempts_partition_column_type_and_order(spark):
         F.col("FechaDatos").cast("int"),
     )
     assert check_nav_schema(read_back, None)[0] == 0
+
+
+def test_bronze_periods_only_counts_cnmv_directories(tmp_path):
+    (tmp_path / "cnmv_202301").mkdir()
+    (tmp_path / "cnmv_202312").mkdir()
+    (tmp_path / "not_a_period").mkdir()
+
+    assert bronze_periods(tmp_path) == {"202301", "202312"}
+
+
+def test_expected_artifact_periods_follow_source_cadence(tmp_path):
+    for periodo in ("202301", "202306", "202309", "202312"):
+        (tmp_path / f"cnmv_{periodo}").mkdir()
+    (tmp_path / "cnmv_202309" / "FONDPATRIMDISVAR_202309.xml").write_text("<x />")
+
+    assert expected_artifact_periods("fund_nav_daily", tmp_path) == {
+        "202301",
+        "202306",
+        "202309",
+        "202312",
+    }
+    assert expected_artifact_periods("fund_quarterly", tmp_path) == {
+        "202306",
+        "202312",
+    }
+    assert expected_artifact_periods("fund_period_financials", tmp_path) == {
+        "202306",
+        "202309",
+        "202312",
+    }
+
+
+def test_compare_periods_reports_missing_and_extra():
+    missing, extra = compare_periods({"202301", "202305"}, {"202301", "202306"})
+    assert missing == ["202306"]
+    assert extra == ["202305"]
+
+
+def test_period_coverage_casts_partition_column_to_string(spark):
+    report = Report()
+    df = spark.createDataFrame([(202301,), (202306,)], ["FechaDatos"])
+
+    report_period_coverage(report, df, "test", {"202301"})
+
+    assert (
+        "FAIL",
+        "test_period_coverage",
+        "missing=[]; extra=['202306']",
+    ) in report.results
+
+
+def test_estr_series_detects_missing_rate_series(spark):
+    df = spark.createDataFrame([("B.EU000A2QQF08.CI",)], ["series"])
+
+    violations, detail = check_estr_series(df)
+
+    assert violations == 1
+    assert "B.EU000A2QQF16.CR" in detail

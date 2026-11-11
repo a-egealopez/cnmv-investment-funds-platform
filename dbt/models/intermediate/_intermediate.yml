@@ -13,8 +13,239 @@ models:
       - name: is_dormant
         description: "NAV = 0: padding o clase durmiente."
         tests: [not_null]
-      - name: is_known_issue
-        description: "Fila dentro de una incidencia auditada de known_data_issues."
-        tests: [not_null]
       - name: quarantine_reason
-        description: "Motivos concatenados para filas materiales o con incidencia conocida."
+        description: "Motivos concatenados para filas materiales."
+
+  - name: int_weekly_nav_returns
+    description: >
+      Serie semanal por clase dentro de la ventana de análisis. Grano: class_key x week_end_date.
+      week_end_date es el domingo ISO de la semana; nav_date es el último laborable con precio válido.
+      El precio semanal es el último laborable con VL > 0: usar el último laborable sin filtrar produce
+      154 retornos extremos en lugar de 25, porque un VL = 0 genera un salto de -100%.
+      Los retornos solo se computan entre semanas consecutivas (SRRI: retornos semanales no solapados).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, week_end_date]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: week_end_date
+        description: "Domingo ISO que cierra la semana."
+        tests: [not_null]
+      - name: nav_date
+        description: "Último laborable con precio válido; nulo si la semana no tiene ninguno."
+      - name: nav
+        description: "Precio liquidativo semanal; nulo si la semana no tiene ningún laborable con precio válido."
+      - name: n_days
+        description: "Laborables observados en la semana."
+        tests: [not_null]
+      - name: n_dormant_days
+        description: "Laborables de la semana con VL = 0 (padding o clase durmiente)."
+        tests: [not_null]
+      - name: is_dormant_week
+        description: "La semana contiene al menos un laborable con VL = 0; puede conservar un nav válido de otro día."
+      - name: ret_w
+        description: "Retorno semanal nav / nav de la semana anterior - 1; nulo si no hay semana anterior consecutiva o falta un precio."
+      - name: mar_w
+        description: "Retorno semanal del índice €STR compuesto; mínimo aceptable de la semana."
+      - name: is_gap
+        description: "No hay retorno porque falta la semana anterior; la primera semana de la clase no es un hueco."
+      - name: is_stale
+        description: "Retorno semanal igual a cero: precio congelado."
+      - name: is_extreme
+        description: "Retorno semanal absoluto por encima de extreme_return_abs."
+
+  - name: int_daily_drawdown
+    description: >
+      Drawdown diario por clase sobre la serie diaria laborable con precio válido. Grano: class_key x value_date.
+      El pico acumulado se reinicia en el inicio de la ventana de análisis.
+      El drawdown se calcula sobre la serie diaria y no la semanal porque no hay convención regulatoria
+      que fije el horizonte y la semanal infraestimaría los mínimos intra-semana.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, value_date]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: value_date
+        tests: [not_null]
+      - name: nav
+        description: "Valor liquidativo del día, siempre positivo."
+        tests: [not_null]
+      - name: running_peak
+        description: "Máximo acumulado del NAV desde el inicio de la ventana."
+        tests: [not_null]
+      - name: drawdown
+        description: "Caída respecto al pico acumulado: 1 - nav / running_peak."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: int_class_metrics_36m
+    description: >
+      Métricas de riesgo y rendimiento por clase sobre la ventana de 36 meses. Grano: class_key.
+      Las métricas se calculan sobre la serie semanal de retornos no solapados con anualización ×52,
+      siguiendo la metodología SRRI de ESMA adaptada a un lookback de 3 años.
+      El drawdown procede de la serie diaria laborable porque la semanal infraestimaría los mínimos intra-semana.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: first_week
+        description: "Primer domingo de la ventana con precio válido."
+      - name: last_week
+        description: "Último domingo de la ventana con precio válido."
+      - name: n_weeks
+        description: "Semanas de la ventana con precio válido."
+        tests: [not_null]
+      - name: n_weeks_expected
+        description: "Semanas teóricas de la ventana de 36 meses."
+        tests: [not_null]
+      - name: n_returns
+        description: "Semanas con retorno computado."
+        tests: [not_null]
+      - name: n_dormant_weeks
+        description: "Semanas con algún día de VL = 0."
+        tests: [not_null]
+      - name: coverage_ratio
+        description: "Semanas con precio válido sobre las semanas teóricas de la ventana."
+      - name: stale_share
+        description: "Proporción de retornos iguales a cero sobre los retornos computados."
+      - name: gap_share
+        description: "Proporción de semanas sin semana anterior consecutiva sobre las semanas con precio válido."
+      - name: ret_1y
+        description: "Retorno de las últimas 52 semanas: precio final sobre el de hace 52 semanas."
+      - name: cagr_3y
+        description: "CAGR de la ventana: precio final sobre el inicial, anualizado por días transcurridos."
+      - name: vol
+        description: "Volatilidad anualizada: desviación muestral semanal de retornos por raíz de 52."
+      - name: mean_excess
+        description: "Exceso medio anualizado sobre el mínimo aceptable del €STR."
+      - name: downside_dev
+        description: "Desviación a la baja anualizada frente al mínimo aceptable del €STR."
+      - name: sortino
+        description: "mean_excess / downside_dev."
+      - name: sortino_status
+        description: "ok, no_downside (downside_dev bajo el suelo con exceso positivo) o stagnant (volatilidad nula)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['ok', 'no_downside', 'stagnant']
+                config:
+                  where: "sortino_status is not null"
+      - name: max_drawdown
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable."
+      - name: srri_like_class
+        description: "Clase de riesgo tipo SRRI (1 a 7) según los cortes oficiales de volatilidad anualizada."
+      - name: class_status
+        description: "eligible, quarantined o short_history. La cuarentena no excluye la clase del panorama."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['eligible', 'quarantined', 'short_history']
+      - name: class_status_reason
+        description: "Motivo principal de la cuarentena, por prioridad; nulo si la clase es eligible."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['dormant', 'extreme_return', 'gap_gt_max', 'coverage_lt_min', 'stale_end', 'short_history']
+                config:
+                  where: "class_status_reason is not null"
+
+  - name: int_representative_class
+    description: >
+      Clase representativa de cada compartimento. Grano: compartment_key.
+      Criterios ordenados: clase activa, ventana completa, divisa de la watchlist,
+      más partícipes, mayor patrimonio y más antigua. Los tres primeros son filtros;
+      los tres últimos ordenan a las que superan el filtro.
+      Un compartimento sin candidata no desaparece: aparece con is_representative = false
+      y exclusion_reason = no_eligible_class, para que el panorama pueda explicar la ausencia.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_key]
+    columns:
+      - name: compartment_key
+        tests: [not_null]
+      - name: class_key
+        description: "Clase representante; nula si el compartimento no tiene ninguna candidata."
+      - name: participants
+        description: "Partícipes de la clase representante en la fecha final del periodo."
+      - name: aum
+        description: "Patrimonio de la clase representante en la fecha final del periodo."
+      - name: class_age
+        description: "Primera observación de la clase en toda la historia; desempata el criterio de antigüedad."
+      - name: is_representative
+        description: "True si la clase es la representante del compartimento."
+      - name: eligibility_status
+        description: "representative o no_eligible_class."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['representative', 'no_eligible_class']
+      - name: exclusion_reason
+        description: "Motivo de la ausencia de representante; nulo cuando la clase es representante."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['no_eligible_class']
+                config:
+                  where: "exclusion_reason is not null"
+
+  - name: int_fund_aum_bridge
+    description: >
+      Puente diario entre patrimonio y valor liquidativo por clase. Grano: class_key x value_date.
+      Descompone el cambio de patrimonio en efecto mercado y flujos netos:
+      units = aum / nav, market_effect = units_{t-1} * (nav_t - nav_{t-1}),
+      net_flows = (units_t - units_{t-1}) * nav_t, y delta_aum = aum_t - aum_{t-1}.
+      Solo entran las filas con NAV y AUM positivos: units exige que ambas magnitudes tengan sentido.
+      is_jump marca un salto de precio por encima de extreme_return_abs, que no es un flujo de dinero.
+      is_distribution marca un reparto de dividendo: el NAV y el AUM caen en la misma proporción
+      con los partícipes intactos. Sin esa marca, un reparto se leería como una salida de fondos.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, value_date]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: value_date
+        tests: [not_null]
+      - name: units
+        description: "Participaciones derivadas: aum / nav. No es un dato oficial de CNMV."
+        tests: [not_null]
+      - name: aum
+        tests: [not_null]
+      - name: nav
+        tests: [not_null]
+      - name: market_effect
+        description: "Cambio de patrimonio atribuible al valor liquidativo."
+        tests: [not_null]
+      - name: net_flows
+        description: "Cambio de patrimonio atribuible a las participaciones."
+        tests: [not_null]
+      - name: delta_aum
+        description: "Cambio total de patrimonio: delta_aum = market_effect + net_flows."
+        tests: [not_null]
+      - name: market_growth
+        description: "market_effect / aum del día anterior."
+      - name: organic_growth
+        description: "net_flows / aum del día anterior."
+      - name: total_growth
+        description: "delta_aum / aum del día anterior."
+      - name: is_jump
+        description: "Salto de precio superior a extreme_return_abs: cambio de identidad, no flujo."
+      - name: is_capital_change
+        description: >
+          Salto del patrimonio acompañado de salto del valor liquidativo: fusión, cambio de clase
+          o incorporación de otra clase. El patrimonio aparece o desaparece sin que entre ni salga dinero.
+          Un salto del patrimonio con el valor liquidativo estable NO es un cambio de capital:
+          es dinero real entrando o saliendo.
+      - name: is_distribution
+        description: "Reparto de dividendo: NAV y AUM caen en la misma proporción con los partícipes intactos."

@@ -1,8 +1,15 @@
+import zipfile
 from pathlib import Path
 
 import pytest
 
-from ingestion.download_history import MESES, parse_year_page
+from ingestion.download_history import (
+    COMPLETE_MARKER,
+    MESES,
+    extract_to_bronze,
+    parse_year_page,
+    sha256_of,
+)
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "cnmv_2025.html"
 
@@ -41,3 +48,54 @@ def test_parse_year_page_rejects_incomplete_closed_year():
     html = "<table id='ctl00_ContentPrincipal_grdDescargas'><tbody><tr><td>Enero</td><td><a href='https://www.cnmv.es/webservices/verdocumento/ver?e=x'/></td></tr></tbody></table>"
     with pytest.raises(ValueError, match="expected 12"):
         parse_year_page(html, 2024)
+
+
+def _zip_with(tmp_path: Path, periodo: str, names: list[str]) -> Path:
+    path = tmp_path / f"cnmv_{periodo}.zip"
+    with zipfile.ZipFile(path, "w") as zf:
+        for name in names:
+            zf.writestr(name, f"<{name} />")
+    return path
+
+
+def test_extract_to_bronze_writes_complete_marker(tmp_path):
+    periodo = "202501"
+    zip_path = _zip_with(
+        tmp_path,
+        periodo,
+        [f"FONDMENS_{periodo}.xml", f"FONDREGISTRO_{periodo}.xml"],
+    )
+
+    destino = extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+
+    marker = destino / COMPLETE_MARKER
+    assert marker.read_text().strip() == sha256_of(zip_path)
+    assert (destino / f"FONDMENS_{periodo}.xml").exists()
+    assert (destino / f"FONDREGISTRO_{periodo}.xml").exists()
+
+
+def test_extract_to_bronze_rebuilds_incomplete_directory(tmp_path):
+    periodo = "202502"
+    zip_path = _zip_with(
+        tmp_path,
+        periodo,
+        [f"FONDMENS_{periodo}.xml", f"FONDREGISTRO_{periodo}.xml"],
+    )
+    destino = tmp_path / "bronze" / f"cnmv_{periodo}"
+    destino.mkdir(parents=True)
+    (destino / f"FONDMENS_{periodo}.xml").write_text("partial")
+
+    result = extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+
+    assert (result / f"FONDREGISTRO_{periodo}.xml").exists()
+    assert (result / COMPLETE_MARKER).read_text().strip() == sha256_of(zip_path)
+
+
+def test_extract_to_bronze_does_not_mark_missing_core_file(tmp_path):
+    periodo = "202503"
+    zip_path = _zip_with(tmp_path, periodo, [f"FONDMENS_{periodo}.xml"])
+
+    with pytest.raises(ValueError, match="FONDREGISTRO"):
+        extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+
+    assert not (tmp_path / "bronze" / f"cnmv_{periodo}" / COMPLETE_MARKER).exists()

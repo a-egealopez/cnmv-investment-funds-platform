@@ -1,0 +1,393 @@
+version: 2
+
+models:
+  - name: mart_fund_watchlist
+    description: >
+      Selección de fondos para la watchlist. Grano: as_of_period x compartment_key.
+      El peer group es la vocación CNMV del compartimento; el percentil usa la fórmula de
+      Morningstar (pct_exact = 100 * (c - 1) / (n - 1), percentil = ceil(pct_exact)).
+      El orden de selección usa pct_exact y no el percentil redondeado, porque el redondeo
+      agrupa a 16 fondos en el percentil 1 y vuelve arbitrario el desempate por CAGR.
+      Tope por familia y después por vocación; el límite global de watchlist_max no llega
+      a activarse con el universo actual.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, compartment_id]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: compartment_id
+        tests: [not_null]
+      - name: class_id
+        tests: [not_null]
+      - name: family
+        description: "Familia de vocación; agrupa las vocaciones para el tope de selección."
+        tests: [not_null]
+      - name: vocation
+        description: "Vocación CNMV del compartimento; define el peer group del percentil."
+        tests: [not_null]
+      - name: rnk
+        description: "Posición global en la selección; 1 es el mejor. Se llama rnk y no rank porque rank es palabra reservada en SQL."
+        tests: [not_null]
+      - name: percentile
+        description: "Percentil dentro de la vocación; 1 es el mejor y 100 el peor."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: quartile
+        description: "Cuartil dentro de la vocación; 1 es el mejor."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: sortino
+        description: "Sortino de la clase representante; base del percentil."
+        tests: [not_null]
+      - name: watchlist_status
+        description: "selected si entra en la watchlist; not_selected si supera el límite global."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['selected', 'not_selected']
+
+  - name: mart_compartment_monthly_performance
+    description: >
+      Flujos mensuales y calidad de ingresos por compartimento. Grano: compartment_key x month.
+      El puente diario es de clase y aquí se agrega a compartimento, que es la granularidad de
+      FONDPATRIMDISVAR: repartir el fee entre las clases del compartimento exigiría inventar un
+      criterio que la fuente no define.
+      Los fees se informan en los meses de cierre (junio y diciembre). En los demás meses las
+      columnas de fee quedan nulas: el mart no reparte un fee semestral entre meses que no lo tienen.
+      participant_retention es un proxy: compara los partícipes de meses consecutivos.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, compartment_id, month]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: compartment_id
+        tests: [not_null]
+      - name: month
+        description: "Mes en formato YYYY-MM."
+        tests: [not_null]
+      - name: aum
+        description: "Patrimonio al cierre del mes."
+      - name: average_aum
+        description: "Patrimonio medio del mes; es la base de los rendimientos."
+      - name: net_flows
+        description: "Flujo neto del mes: suscripciones menos reembolsos."
+      - name: market_effect
+        description: "Cambio del patrimonio atribuible al valor liquidativo."
+      - name: delta_aum
+        description: "Cambio total del patrimonio en el mes."
+      - name: net_flow_yield
+        description: "Flujo neto sobre el patrimonio medio del mes."
+      - name: market_growth
+        description: "Efecto mercado sobre el patrimonio medio del mes."
+      - name: organic_growth
+        description: "Flujo neto sobre el patrimonio medio del mes."
+      - name: total_growth
+        description: "Cambio total del patrimonio sobre el patrimonio medio del mes."
+      - name: outflow_share
+        description: "Salidas netas sobre el patrimonio medio del mes; negativo o cero."
+      - name: participant_retention
+        description: "Partícipes del mes sobre los del mes anterior. Es un proxy, no retención bruta."
+      - name: participant_retention_2m
+        description: "Partícipes del mes sobre los de dos meses antes."
+      - name: aum_retention
+        description: "Patrimonio del mes sobre el del mes anterior."
+      - name: net_subscriptions_redemptions_pct
+        description: "Flujo neto oficial acumulado del ejercicio, en puntos porcentuales del patrimonio medio diario."
+      - name: total_patrimony
+        description: "Patrimonio de fin de periodo, en la divisa del compartimento."
+      - name: net_return_pct
+        description: "Retorno neto oficial acumulado del ejercicio, en puntos porcentuales."
+      - name: core_fee_yield_pct
+        description: "Comisión de gestión más depositaria, en puntos porcentuales."
+      - name: other_expense_yield_pct
+        description: "Resto de gastos, en puntos porcentuales."
+      - name: expense_ratio_pct
+        description: "Gastos totales, en puntos porcentuales."
+      - name: income_yield_pct
+        description: "Ingresos totales, en puntos porcentuales."
+      - name: core_fee_share
+        description: "Proporción de los gastos que son gestión y depositaria."
+      - name: fee_revenue_proxy
+        description: "Ingresos por fee aproximados sobre el patrimonio de fin de periodo; no es ingreso contable."
+      - name: n_capital_changes
+        description: "Saltos de capital del mes: fusiones o cambios de clase."
+      - name: n_distributions
+        description: "Repartos de dividendo detectados en el mes."
+      - name: n_jumps
+        description: "Saltos de precio del mes."
+
+  - name: mart_market_fee_and_aum
+    description: >
+      Mercado español de fondos: patrimonio gestionado y concentración de fees por grupo gestora.
+      Grano: month. Tabla de mercado, no de compartimentos.
+      total_aum_managed y n_manager_groups_active están disponibles todos los meses.
+      hhi_fee, effective_n_groups, n_manager_groups y top5_fee_share solo existen en los meses
+      de cierre (junio y diciembre), porque FONDPATRIMDISVAR informa en semestres. El nombre
+      refleja que el modelo mezcla patrimonio gestionado, que es mensual, con concentración de
+      fees, que es semestral.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, month]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: month
+        description: "Mes en formato YYYY-MM."
+        tests: [not_null]
+      - name: total_aum_managed
+        description: "Patrimonio gestionado total del país en el mes."
+      - name: n_manager_groups_active
+        description: "Grupos gestoras con patrimonio en el mes."
+      - name: total_fee_revenue
+        description: "Ingresos por fee del mercado en el mes de cierre."
+      - name: hhi_fee
+        description: "Concentración de los ingresos por fee entre grupos gestoras; 1 sería un único grupo."
+      - name: effective_n_groups
+        description: "Número de grupos con el mismo peso que el reparto observado."
+      - name: n_manager_groups
+        description: "Grupos gestoras con ingresos por fee en el mes de cierre."
+      - name: top5_fee_share
+        description: "Proporción de los ingresos por fee que aportan los cinco grupos mayores."
+
+  - name: mart_manager_group_monthly
+    description: >
+      Detalle por grupo gestora y mes. Grano: month x manager_group_name.
+      Es lo que explica el HHI: sin el detalle por grupo, la caída del HHI se lee como
+      desconcentración sin poder distinguir si viene de los grandes o de la cola.
+      market_share es la cuota de patrimonio del grupo sobre el total gestionado en el mes.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, month, manager_group_name]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: month
+        description: "Mes en formato YYYY-MM."
+        tests: [not_null]
+      - name: manager_group_name
+        description: "Grupo de gestoras; es la unidad de concentración de fees."
+        tests: [not_null]
+      - name: rank_by_aum
+        description: "Posición del grupo por patrimonio gestionado en el mes."
+      - name: n_manager_groups
+        description: "Grupos gestoras con patrimonio en el mes."
+      - name: aum_managed
+        description: "Patrimonio gestionado por el grupo en el mes."
+      - name: total_aum_managed
+        description: "Patrimonio gestionado total del mercado en el mes."
+      - name: market_share
+        description: "Cuota de patrimonio del grupo sobre el total del mercado en el mes."
+      - name: fee_revenue
+        description: "Ingresos por fee del grupo; solo en los meses de cierre."
+      - name: fee_revenue_per_aum
+        description: "Ingresos por fee del grupo por euro de patrimonio gestionado."
+
+  - name: mart_class_nav_weekly
+    description: >
+      Serie semanal rebasada a 100 para gráficos de rendimiento. Grano: class_key x week_end_date.
+      Solo incluye clases elegibles: una serie rebasada compara rendimiento y solo tiene sentido
+      entre clases con métricas completas. La base 100 es el valor liquidativo de la primera semana
+      con dato de la serie de cada clase, no el inicio del calendario: una clase con historia corta
+      parte de 100 en su primera semana observada.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, class_id, week_end_date]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: class_id
+        tests: [not_null]
+      - name: week_end_date
+        description: "Domingo ISO que cierra la semana."
+        tests: [not_null]
+      - name: nav
+        description: "Valor liquidativo semanal."
+      - name: base_nav
+        description: "Valor liquidativo de la primera semana con dato; es la base del rebasing."
+      - name: nav_rebased_100
+        description: "Valor liquidativo reexpresado con base 100 en la primera semana de la serie."
+
+  - name: mart_fund_panorama
+    description: >
+      Vista de decisión de la plataforma: una fila por compartimento, a través de su clase
+      representativa. Grano: as_of_period x compartment_key.
+      La unidad de decisión es el compartimento y la de medición la clase de participación, así que
+      el panorama solo incluye compartimentos con clase representativa. Incluir todas las clases
+      activas duplicaría la cartera del compartimento en cada una de sus clases y haría que sumar
+      el patrimonio de las filas contara de más.
+      La cartera, los flujos y las fees son de compartimento; el riesgo y el retorno, de clase.
+      Las anomalías llegan como recuento: el detalle está en mart_fund_anomalies.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [as_of_period, compartment_id]
+    columns:
+      - name: as_of_period
+        tests: [not_null]
+      - name: fund_id
+        tests: [not_null]
+      - name: compartment_id
+        tests: [not_null]
+      - name: class_id
+        description: "Clase representante del compartimento."
+        tests: [not_null]
+      - name: vocation
+        description: "Vocación inversora CNMV del compartimento."
+      - name: vocation_family
+        description: "Familia de vocación; agrupa las vocaciones para la watchlist."
+      - name: currency
+        description: "Divisa de la clase representativa."
+      - name: class_status
+        description: "eligible, quarantined o short_history."
+      - name: class_status_reason
+        description: "Motivo principal del estado de la clase."
+      - name: ret_1y
+        description: "Retorno de las últimas 52 semanas."
+      - name: cagr_3y
+        description: "CAGR de la ventana de 36 meses."
+      - name: vol
+        description: "Volatilidad anualizada sobre retornos semanales."
+      - name: srri_like_class
+        description: "Clase de riesgo tipo SRRI, de 1 a 7."
+      - name: sortino
+        description: "Sortino de la clase representativa."
+      - name: sortino_status
+        description: "ok, no_downside o stagnant."
+      - name: max_drawdown
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable."
+      - name: coverage_ratio
+        description: "Cobertura de semanas con precio válido sobre las teóricas de la ventana."
+      - name: stale_share
+        description: "Proporción de semanas con retorno cero."
+      - name: gap_share
+        description: "Proporción de semanas sin semana anterior consecutiva."
+      - name: aum
+        description: "Patrimonio del compartimento en la fecha de corte."
+      - name: participants
+        description: "Partícipes del compartimento en la fecha de corte."
+      - name: is_representative
+        description: "Siempre True: el panorama solo contiene clases representativas."
+      - name: watchlist_status
+        description: "selected, not_selected o not_representative."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['selected', 'not_selected', 'not_representative']
+      - name: exclusion_reason
+        description: "Motivo de la ausencia de la watchlist; nulo si el fondo está seleccionado."
+      - name: rnk
+        description: "Posición del fondo en la watchlist; mismo nombre que en mart_fund_watchlist."
+      - name: watchlist_percentile
+        description: "Percentil del fondo dentro de su vocación."
+      - name: watchlist_quartile
+        description: "Cuartil del fondo dentro de su vocación."
+      - name: holdings_period
+        description: "Periodo del último fichero de cartera."
+      - name: n_positions
+        description: "Instrumentos con valor positivo en la cartera."
+      - name: hhi
+        description: "Concentración de la cartera: suma de los cuadrados de los pesos."
+      - name: effective_n
+        description: "Número de posiciones con el mismo peso que el reparto observado."
+      - name: top10_weight
+        description: "Peso de las diez mayores posiciones."
+      - name: holdings_coverage_ratio
+        description: "Cartera reportada sobre el patrimonio del compartimento."
+      - name: holdings_incomplete
+        description: "La cobertura de la cartera queda fuera de la banda admisible."
+      - name: net_flow_yield
+        description: "Flujo neto del último mes sobre el patrimonio medio."
+      - name: market_growth
+        description: "Efecto mercado del último mes."
+      - name: organic_growth
+        description: "Flujo neto del último mes."
+      - name: core_fee_share
+        description: "Proporción de los gastos que son gestión y depositaria."
+      - name: expense_ratio_pct
+        description: "Gastos totales acumulados desde el cierre del ejercicio."
+      - name: fee_revenue_proxy
+        description: "Ingresos por fee aproximados; no es ingreso contable."
+      - name: n_anomalies
+        description: "Anomalías detectadas en el compartimento."
+      - name: n_anomalies_high
+        description: "Anomalías de severidad high, que exigen revisión manual."
+
+  - name: mart_fund_allocation
+    description: >
+      Composición de la cartera por categoría de activo. Grano: compartment_key x holdings_period x descripcion_if x clase_if.
+      Vista sobre fact_holdings, que ya tiene el peso agregado por instrumento.
+      Se expone la descripción porque discrimina más que la clase, y la clase porque separa
+      cartera interior de exterior: la misma descripción aparece en ambas con pesos distintos.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, holdings_period, descripcion_if, clase_if]
+    columns:
+      - name: compartment_id
+        tests: [not_null]
+      - name: holdings_period
+        description: "Periodo del fichero FONDCART del que procede la cartera."
+        tests: [not_null]
+      - name: descripcion_if
+        description: "Categoría del activo: renta variable cotizada, renta fija cotizada a más de un año, IIC, etc."
+        tests: [not_null]
+      - name: clase_if
+        description: "EXTERIOR, INTERIOR o DUDOSAS."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['EXTERIOR', 'INTERIOR', 'DUDOSAS']
+      - name: n_positions
+        description: "Instrumentos de esta categoría."
+        tests: [not_null]
+      - name: position_value
+        description: "Valor de mercado de la categoría, en euros."
+      - name: weight
+        description: "Peso de la categoría sobre el total de posiciones con valor positivo."
+      - name: weight_share
+        description: "Cuota de la categoría dentro del compartimento; las cuotas suman 1."
+
+  - name: mart_fund_top_holdings
+    description: >
+      Diez mayores posiciones de cada compartimento. Grano: compartment_key x holdings_period x position_rank.
+      Vista sobre fact_holdings, que ya tiene el peso de cada instrumento y su posición dentro del compartimento.
+      Las posiciones con valor no positivo quedan fuera: no tienen peso con el que ordenarse.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, holdings_period, position_rank]
+    columns:
+      - name: compartment_id
+        tests: [not_null]
+      - name: holdings_period
+        tests: [not_null]
+      - name: position_rank
+        description: "Posición dentro del compartimento, de 1 a 10."
+        tests: [not_null]
+      - name: instrument_key
+        description: "Identificador del instrumento: ISIN real, o clase, descripción y detalle si no lo hay."
+        tests: [not_null]
+      - name: isin
+        description: "ISIN del instrumento; XXXXXXXXXXXX es un sentinel de CNMV, no un ISIN real."
+      - name: clase_if
+        description: "EXTERIOR, INTERIOR o DUDOSAS."
+      - name: descripcion_if
+        description: "Categoría del activo."
+      - name: asset_description
+        description: "Descripción detallada de la posición."
+      - name: position_value
+        description: "Valor de mercado en euros."
+      - name: weight
+        description: "Peso de la posición sobre el total de posiciones con valor positivo."

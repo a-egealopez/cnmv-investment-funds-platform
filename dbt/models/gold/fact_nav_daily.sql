@@ -3,7 +3,7 @@ with classified as (
 )
 
 select
-    c.class_key,
+    cl.class_id,
     d.date_key,
     c.nav,
     c.aum,
@@ -14,7 +14,8 @@ select
     c.is_dust_aum,
     c.is_dust_holders
 from classified as c
+inner join {{ ref('dim_class') }} as cl
+    on cl.class_key = c.class_key
 inner join {{ ref('dim_date') }} as d
     on c.value_date = d.date_day
 where not c.is_material
-  and not c.is_known_issue

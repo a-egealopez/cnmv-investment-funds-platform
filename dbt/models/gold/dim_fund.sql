@@ -7,6 +7,7 @@ with latest_metadata as (
 )
 
 select
+    row_number() over (order by fund_key) as fund_id,
     fund_key,
     fund_type,
     registration_number,

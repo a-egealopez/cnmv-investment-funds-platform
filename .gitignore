@@ -6,3 +6,7 @@ __pycache__/
 .dbt/
 logs/
 target/
+PLAN.md
+ROADMAP.md
+dbt_plan.md
+.opencode/

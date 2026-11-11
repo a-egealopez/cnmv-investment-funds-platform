@@ -1,24 +1,16 @@
 {{ config(severity='warn') }}
 
--- Identidades del balance de FONDPATRIMDISVAR. Unidad: EUR.
---   IF = InversionesFinancieras
---   CI = CarteraInterior
---   CE = CarteraExterior
---   IC = InteresesCartera
---   ID = InversionesDudosas
---   TP = TotalPatrimonio
---   L  = Liquidez
---   R  = Resto
--- Tolerancia: 2.000 € fijos como umbral de materialidad, no de precisión.
--- La fuente publica euros con 2 decimales; el máximo residual no material
--- observado es 2.000 € (6 filas), y la única excepción material es 1,68 bn €.
+-- Balance identities. Unit: EUR.
+-- IF = FinancialInvestments; CI = DomesticPortfolio; CE = ForeignPortfolio;
+-- IC = PortfolioInterest; ID = DoubtfulInvestments; TP = TotalPatrimony;
+-- L = Cash; R = OtherAssets.
+-- Tolerance: fixed 2,000€ materiality threshold, not precision.
 
 with residuals as (
-    -- IF: InversionesFinancieras = CarteraInterior + CarteraExterior
-    --     + InteresesCartera + InversionesDudosas
+    -- IF: FinancialInvestments = Domestic + Foreign + Interest + Doubtful
     select
         'IF = CI + CE + IC + ID' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(financial_investments - (
             domestic_portfolio
@@ -30,12 +22,11 @@ with residuals as (
 
     union all
 
-    -- TP: TotalPatrimonio = InversionesFinancieras + Liquidez + Resto.
-    --     No se comprueba TP = PatrimonioFinPeriodoActual porque no es una
-    --     identidad estable en la fuente.
+    -- TP: TotalPatrimony = FinancialInvestments + Cash + OtherAssets.
+    -- Not checked against PatrimonioFinPeriodoActual: not a stable source identity.
     select
         'TP = IF + L + R' as identity,
-        compartment_key,
+        compartment_id,
         period,
         abs(total_patrimony - (
             financial_investments
