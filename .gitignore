@@ -10,3 +10,4 @@ PLAN.md
 ROADMAP.md
 dbt_plan.md
 .opencode/
+tests/fixtures/silver

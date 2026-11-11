@@ -8,6 +8,6 @@ cnmv:
       threads: 4
     ci:
       type: duckdb
-      path: "../data/gold/cnmv_ci.duckdb"
+      path: "./data/gold/cnmv_ci.duckdb"
       schema: main
       threads: 4

@@ -24,7 +24,7 @@ select
     m.compartment_number,
     m.compartment_name,
     coalesce(va.canonical_vocation, q.vocation) as vocation,
-    coalesce(vf.family, 'No vocation') as vocation_family,
+    coalesce(vf.family, 'Sin vocación') as vocation_family,
     coalesce(vf.include_in_watchlist, false) as include_in_watchlist,
     q.fund_class
 from latest_metadata as m
