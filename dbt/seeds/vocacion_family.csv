@@ -1,0 +1,15 @@
+vocation,family,include_in_watchlist,description
+Renta Fija Euro,Renta Fija,true,Renta fija en euros; agrupa distintas duraciones y calidades crediticias dentro de la eurozona.
+Renta Fija Internacional,Renta Fija,true,Renta fija global o fuera de la eurozona; suele incorporar exposición a riesgo de divisa.
+Renta Fija Mixta Euro,Renta Fija,true,Cartera mixta con predominio de renta fija y exposición principal a activos en euros.
+Renta Fija Mixta Internacional,Renta Fija,true,Cartera mixta con predominio de renta fija y diversificación geográfica e internacional.
+Renta Variable Euro,Renta Variable,true,Inversión en renta variable centrada en compañías y mercados de la eurozona.
+Renta Variable Internacional,Renta Variable,true,Inversión en renta variable global o fuera de la eurozona; incorpora riesgo de divisa.
+Renta Variable Mixta Euro,Renta Variable,true,Cartera mixta con predominio de renta variable y sesgo hacia la eurozona.
+Renta Variable Mixta Internacional,Renta Variable,true,Cartera mixta con predominio de renta variable y alcance internacional.
+Global,Global,true,Estrategia flexible sin sesgo preconcebido hacia un tipo de activo o geografía concreta.
+Retorno Absoluto,Retorno Absoluto,true,Busca rentabilidad positiva con independencia de la tendencia del mercado a través de estrategias heterogéneas.
+Garantizado de Rendimiento Fijo,Garantizados,false,Estructura que garantiza la preservación del capital más un rendimiento fijo predeterminado.
+Garantizado de Rendimiento Variable,Garantizados,false,Estructura que garantiza el capital y liga su rendimiento a la evolución de un subyacente.
+De Garantía Parcial,Garantizados,false,Fondos con garantía limitada que protegen únicamente un porcentaje del capital invertido.
+IIC de Gestión Pasiva,Gestión Pasiva,false,Vehículos orientados a replicar o tomar como referencia el comportamiento de un índice.

@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: quarantine_nav_daily
+    description: "Cuarentena de NAV diario. Grano: 1 clase x 1 día. Anomalías materiales y glitches conocidos. La cuarentena es a nivel de fila."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - class_key
+              - value_date
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: value_date
+        tests: [not_null]
+      - name: quarantine_reason
+        description: "Motivos concatenados que justifican la cuarentena."
+        tests: [not_null]

@@ -1,0 +1,2 @@
+issue_id,class_key,start_date,end_date,reason
+FI-5619-2023-11,FI|5619|3|0,2023-11-11,2023-11-13,"Restatement/recovery glitch: two negative NAV rows followed by a +26,935% jump"

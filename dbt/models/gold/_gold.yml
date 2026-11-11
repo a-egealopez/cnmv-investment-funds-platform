@@ -1,0 +1,163 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: "Calendario diario. Grano: 1 día. Cubre el rango de fechas de fact_nav_daily."
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+      - name: date_key
+        tests: [unique, not_null]
+      - name: week_start_date
+        tests: [not_null]
+      - name: week_end_date
+        tests: [not_null]
+
+  - name: dim_fund
+    description: "Dimensión Type 1 de entidad: último atributo conocido <= as_of_period."
+    columns:
+      - name: fund_key
+        tests: [unique, not_null]
+      - name: fund_name
+        tests: [not_null]
+      - name: manager_name
+        tests: [not_null]
+      - name: depositary_name
+        tests: [not_null]
+
+  - name: dim_compartment
+    description: "Dimensión Type 1 de compartimento. Grano: 1 compartimento. Integra metadata y vocación/ClaseFondo de FONDTRIM."
+    columns:
+      - name: compartment_key
+        tests: [unique, not_null]
+      - name: fund_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_fund')
+                field: fund_key
+      - name: compartment_name
+        tests: [not_null]
+      - name: vocation_family
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Renta Fija', 'Renta Variable', 'Global', 'Retorno Absoluto', 'Garantizados', 'Gestión Pasiva', 'Sin vocación']
+      - name: include_in_watchlist
+        tests: [not_null]
+      - name: vocation
+        tests:
+          - relationships:
+              arguments:
+                to: ref('vocacion_family')
+                field: vocation
+
+  - name: dim_class
+    description: "Dimensión Type 1 de clase. Grano: 1 clase. Integra metadata y divisas de FONDTRIM."
+    columns:
+      - name: class_key
+        tests: [unique, not_null]
+      - name: class_name
+        tests: [not_null]
+      - name: isin
+        tests: [not_null]
+      - name: compartment_key
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_key
+      - name: class_currency_code
+        description: "Divisa de la clase; nula si la clase no está en FONDTRIM."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: fact_nav_daily
+    description: "Hecho diario de NAV. Grano: 1 clase x 1 día. Excluye filas con anomalía material (abs(valor) > neg_dust_max) y glitches conocidos. La cuarentena es a nivel de fila."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - class_key
+              - date_key
+    columns:
+      - name: class_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: nav
+        tests: [not_null]
+      - name: aum
+        tests: [not_null]
+      - name: holders
+        tests: [not_null]
+      - name: is_dormant
+        description: "NAV = 0: padding o clase durmiente; no prueba por sí solo que la clase esté inactiva."
+        tests: [not_null]
+      - name: is_dust
+        description: "Residuo de redondeo en NAV, AUM o partícipes (0 < abs(valor) <= neg_dust_max); se conserva en el hecho."
+        tests: [not_null]
+      - name: is_dust_nav
+        tests: [not_null]
+      - name: is_dust_aum
+        tests: [not_null]
+      - name: is_dust_holders
+        tests: [not_null]
+
+  - name: fact_fund_period_financials
+    description: >
+      FONDPATRIMDISVAR: distribución del patrimonio en EUR, gastos e ingresos en
+      puntos porcentuales con el signo del XML, flujo neto, retorno, rotación y
+      patrimonios por compartimento y periodo. Grano: compartment_key x period.
+      Conserva todas las filas de staging; las incidencias se señalizan en tests
+      y en la capa de calidad, no se descartan.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - compartment_key
+              - period
+    columns:
+      - name: compartment_key
+        description: "fund_type|registration_number|compartment_number"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_key
+      - name: period
+        description: "Cierre YYYYMM de FONDPATRIMDISVAR (06/12 observado)."
+        tests: [not_null]
+      - name: total_patrimony
+        description: "Patrimonio de cierre en EUR. Hay 1 nulo y 1 valor cero en los datos reales; no se descartan."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: core_fee_yield_pct
+        description: "abs(ComisionGestion + ComisionDepositario), en puntos porcentuales."
+      - name: other_expense_yield_pct
+        description: "abs(GastosServiciosExteriores + OtrosGastosGestion + OtrosGastosRepercutidos), en puntos porcentuales."
+      - name: expense_ratio_pct
+        description: "abs(GastosRepercutidos), en puntos porcentuales."
+      - name: income_yield_pct
+        description: "abs(Ingresos), en puntos porcentuales."
+      - name: core_fee_share
+        description: "core_fee_yield_pct / expense_ratio_pct. Nulo si el gasto total es cero (51 filas) o la fila es nula (1)."
+      - name: fee_revenue_proxy
+        description: "total_patrimony * core_fee_yield_pct / 100. Magnitud positiva para concentración; no es ingreso contable."

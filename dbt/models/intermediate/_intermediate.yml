@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: int_nav_daily_classified
+    description: "Clasificación de calidad de NAV diario. Grano: class_key x value_date. Material: abs(valor) > neg_dust_max. Dust: 0 < abs(valor) <= neg_dust_max."
+    columns:
+      - name: is_material
+        description: "Anomalía material en NAV, AUM o partícipes; se envía a cuarentena."
+        tests: [not_null]
+      - name: is_dust
+        description: "Residuo de redondeo; se conserva en el hecho con flag."
+        tests: [not_null]
+      - name: is_dormant
+        description: "NAV = 0: padding o clase durmiente."
+        tests: [not_null]
+      - name: is_known_issue
+        description: "Fila dentro de una incidencia auditada de known_data_issues."
+        tests: [not_null]
+      - name: quarantine_reason
+        description: "Motivos concatenados para filas materiales o con incidencia conocida."

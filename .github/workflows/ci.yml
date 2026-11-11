@@ -1,0 +1,135 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Ruff
+        run: pip install ruff==0.17.1
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+  test:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYSPARK_PYTHON: python
+      SPARK_LOCAL_IP: 127.0.0.1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  dbt:
+    name: dbt build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dbt.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dbt.txt
+
+      - name: Build Silver fixture
+        run: python tests/fixtures/build_silver_fixture.py
+
+      - name: Prepare directories
+        run: mkdir -p data/gold
+
+      - name: dbt deps
+        run: dbt deps --project-dir dbt --profiles-dir dbt
+
+      - name: dbt build
+        run: >-
+          dbt build --project-dir dbt --profiles-dir dbt --target ci
+          --vars '{as_of_period: "202605", silver_root: "tests/fixtures/silver"}'
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  commitizen:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Commitizen
+        run: pip install commitizen==4.1.0
+
+      - name: Check commit messages
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            cz check --rev-range origin/${{ github.event.pull_request.base.ref }}..HEAD
+          else
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              cz check --rev-range HEAD~1..HEAD
+            else
+              echo "Solo existe un commit en el repositorio. Verificando formato..."
+              git log -1 --format=%B > .git/committmp
+              cz check --commit-msg-file .git/committmp
+            fi
+          fi

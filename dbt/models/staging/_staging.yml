@@ -1,0 +1,138 @@
+version: 2
+
+models:
+  - name: stg_fund_nav_daily
+    description: "NAV, patrimonio y participes diarios por clase. Grano: class key x value_date."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, value_date]
+    columns:
+      - name: class_key
+        description: "fund_type|registration_number|compartment_number|class_number"
+        tests: [not_null]
+      - name: fund_key
+        description: "fund_type|registration_number"
+        tests: [not_null]
+      - name: compartment_key
+        description: "fund_key|compartment_number"
+        tests: [not_null]
+      - name: period
+        description: "Partición YYYYMM de FechaDatos"
+        tests: [not_null]
+      - name: value_date
+        description: "Fecha del dato diario"
+        tests: [not_null]
+      - name: nav
+        description: "Valor liquidativo (VL). Puede ser <= 0 en datos crudos; se marca en int_nav_daily_classified, no se descarta aquí."
+        tests: [not_null]
+      - name: aum
+        description: "Patrimonio en unidades monetarias"
+        tests: [not_null]
+      - name: holders
+        description: "Número de partícipes"
+        tests: [not_null]
+
+  - name: stg_fund_metadata
+    description: "Nombres, gestora, depositario, ETF e ISIN por clase y periodo. Grano: class_key x period."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, period]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: fund_key
+        tests: [not_null]
+      - name: compartment_key
+        tests: [not_null]
+      - name: period
+        tests: [not_null]
+      - name: isin
+        description: "Puede faltar en algunos periodos del trimestral; en metadata hoy no hay nulos."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: stg_fund_quarterly
+    description: "Snapshot semestral por clase: vocación, divisa, comisiones, rentabilidad, volatilidad y TER oficiales. Grano: class_key x period."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, period]
+    columns:
+      - name: class_key
+        tests: [not_null]
+      - name: fund_key
+        tests: [not_null]
+      - name: compartment_key
+        tests: [not_null]
+      - name: period
+        tests: [not_null]
+      - name: isin
+        description: "13 nulos observados en 202306-202512; no es clave del grano."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: stg_fund_period_financials
+    description: "FONDPATRIMDISVAR: distribución, gastos, ingresos, flujo neto y patrimonio por compartimento y periodo. Grano: compartment_key x period."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_key, period]
+    columns:
+      - name: fund_key
+        tests: [not_null]
+      - name: compartment_key
+        tests: [not_null]
+      - name: period
+        tests: [not_null]
+      - name: total_patrimony
+        description: "Patrimonio monetario. Hay 1 nulo y 1 valor a cero en los datos reales; se tratan en calidad, no aquí."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: stg_fund_holdings
+    description: "FONDCART: posiciones de cartera por compartimento y periodo. Grano:  compartment_key x period x linea (puede haber líneas repetidas del mismo instrumento)."
+    columns:
+      - name: fund_key
+        tests: [not_null]
+      - name: compartment_key
+        tests: [not_null]
+      - name: period
+        tests: [not_null]
+      - name: position_value
+        description: "Valor de mercado en euros. 38 posiciones <= 0 en los datos reales; se tratan en cartera."
+        tests: [not_null]
+      - name: isin
+        description: "1.296 posiciones sin ISIN; el intrumento se identifica por ClaseIF + DescripcionIF."
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: asset_if_class
+        description: "INTERIOR / EXTERIOR / DUDOSAS"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['INTERIOR', 'EXTERIOR', 'DUDOSAS']
+
+  - name: stg_estr_daily
+    description: "BCE €STR en formato largo: índice CI y media compuesta 12M CR. Grano: series x value_date."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [series, value_date]
+    columns:
+      - name: series
+        tests: [not_null]
+      - name: value_date
+        tests: [not_null]
+      - name: series_value
+        description: "Valor de la serie: nivel del índice para .CI, tasa para .CR. Puede ser negativo en .CR."
+        tests: [not_null]
