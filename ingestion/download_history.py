@@ -1,5 +1,6 @@
 #    python -m ingestion.download_history 2025                 # list (periodo, url) pairs
 #    python -m ingestion.download_history --run 2023-2025      # full historical run
+#    python -m ingestion.download_history --period 202605      # a single month
 
 from __future__ import annotations
 
@@ -15,13 +16,13 @@ from pathlib import Path
 import lxml.html
 import requests
 
+from config import BRONZE_DIR, RAW_DIR
+
 BASE_URL = (
     "https://www.cnmv.es/portal/publicaciones/descarga-informacion-individual.aspx"
 )
 TABLE_ID = "ctl00_ContentPrincipal_grdDescargas"
 
-RAW_DIR = Path("data/raw")
-BRONZE_DIR = Path("data/bronze")
 MANIFEST_PATH = RAW_DIR / "manifest.csv"
 MANIFEST_FIELDS = ["periodo", "url", "downloaded_at", "sha256", "bytes", "zip_name"]
 COMPLETE_MARKER = ".complete"
@@ -220,28 +221,42 @@ def extract_to_bronze(
     return destino
 
 
-# Step 5 — loop a year range end to end
+# Step 5 — one period, or a year range, end to end
 
 
-def run_history(years: range, delay: float = 1.0) -> list[str]:
-    """List, download and extract every month in the given years."""
+def ingest_period(periodo: str, url: str) -> Path:
+    zip_path = download_with_manifest(periodo, url)
+    return extract_to_bronze(periodo, zip_path)
+
+
+def run_history(
+    years: range, periodo: str | None = None, delay: float = 1.0
+) -> tuple[list[str], list[str]]:
+    """Returns (done, failed); the caller exits non-zero on any failure, which
+    is the only signal a scheduler gets."""
     hechos: list[str] = []
+    fallidos: list[str] = []
     for year in years:
         try:
             pares = parse_year_page(fetch_year_html(year), year)
+            if periodo is not None:
+                pares = [(p, u) for p, u in pares if p == periodo]
+                if not pares:
+                    raise ValueError(f"period {periodo} not published for {year}")
         except Exception as e:  # noqa: BLE001 — bulk load: one bad year must not stop the run
             print(f"FAILED year {year}: {e}")
+            fallidos.append(f"year {year}")
             continue
-        for periodo, url in pares:
+        for p, url in pares:
             try:
-                zip_path = download_with_manifest(periodo, url)
-                extract_to_bronze(periodo, zip_path)
-                hechos.append(periodo)
+                ingest_period(p, url)
+                hechos.append(p)
             except Exception as e:  # noqa: BLE001 — bulk load: one bad period must not stop the run
-                print(f"FAILED {periodo}: {e}")
+                print(f"FAILED {p}: {e}")
+                fallidos.append(p)
             time.sleep(delay)
-    print(f"{len(hechos)} periods done")
-    return hechos
+    print(f"{len(hechos)} periods done, {len(fallidos)} failed")
+    return hechos, fallidos
 
 
 # CLI
@@ -253,17 +268,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--run",
         metavar="START-END",
-        help="STEP 5: download and extract a year range, e.g. 2023-2025",
+        help="download and extract a year range, e.g. 2023-2025",
+    )
+    parser.add_argument(
+        "--period",
+        metavar="YYYYMM",
+        help="download and extract a single period, e.g. 202605",
     )
     args = parser.parse_args(argv)
 
+    if args.run and args.period:
+        parser.error("use --run or --period, not both")
+
+    if args.period:
+        if not (len(args.period) == 6 and args.period.isdigit()):
+            parser.error("--period must look like YYYYMM, e.g. 202605")
+        year = int(args.period[:4])
+        _, fallidos = run_history(range(year, year + 1), periodo=args.period)
+        return 1 if fallidos else 0
+
     if args.run:
         start, end = (int(y) for y in args.run.split("-"))
-        run_history(range(start, end + 1))
-        return 0
+        _, fallidos = run_history(range(start, end + 1))
+        return 1 if fallidos else 0
 
     if args.year is None:
-        parser.error("give a year to list, or --run START-END for the full run")
+        parser.error("give a year to list, or --run / --period for a real download")
 
     pares = parse_year_page(fetch_year_html(args.year), args.year)
     for periodo, url in pares:

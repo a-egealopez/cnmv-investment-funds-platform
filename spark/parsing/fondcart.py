@@ -8,7 +8,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 # INPUT schema: explicit so single elements are still arrays; all strings, cast later.
 # Compartimentos without positions produce no rows; a source property, not a parse error.
@@ -142,23 +142,6 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/fund_holdings"):
+def write_silver(df, path=str(SILVER_DIR / "fund_holdings")):
     # Needs partitionOverwriteMode=dynamic (set in get_spark)
     df.write.mode("overwrite").partitionBy("FechaDatos").parquet(path)
-
-
-def main(input_path: str, output_path: str):
-    spark = get_spark("fondcart_parser")
-    try:
-        df = parse_fondcart_xml(spark, input_path)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.fondcart data/bronze/cnmv_202512/FONDCART_202512.xml data/silver/fund_holdings
-    main(sys.argv[1], sys.argv[2])

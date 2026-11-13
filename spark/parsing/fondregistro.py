@@ -8,7 +8,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 # INPUT schema: explicit so single elements are still arrays; all strings, cast later.
 INPUT_SCHEMA = StructType(
@@ -212,23 +212,6 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/fund_metadata"):
+def write_silver(df, path=str(SILVER_DIR / "fund_metadata")):
     # Needs partitionOverwriteMode=dynamic (set in get_spark)
     df.write.mode("overwrite").partitionBy("FechaDatos").parquet(path)
-
-
-def main(input_path: str, output_path: str):
-    spark = get_spark("fondregistro_parser")
-    try:
-        df = parse_fondregistro_xml(spark, input_path)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.fondregistro data/bronze/cnmv_202601/FONDREGISTRO_202601.xml data/silver/fund_metadata
-    main(sys.argv[1], sys.argv[2])

@@ -9,7 +9,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 
 def _daily_struct(prefix):
@@ -188,23 +188,6 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/fund_nav_daily"):
+def write_silver(df, path=str(SILVER_DIR / "fund_nav_daily")):
     # Needs partitionOverwriteMode=dynamic (set in get_spark)
     df.write.mode("overwrite").partitionBy("FechaDatos").parquet(path)
-
-
-def main(input_path: str, output_path: str):
-    spark = get_spark("fondmens_parser")
-    try:
-        df = parse_fondmens_xml(spark, input_path)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.fondmens data/bronze/cnmv_202601/FONDMENS_202601.xml data/silver/fund_nav_daily
-    main(sys.argv[1], sys.argv[2])

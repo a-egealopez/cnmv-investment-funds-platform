@@ -7,24 +7,24 @@ sources:
       - name: fund_nav_daily
         description: "FONDMENS: NAV, patrimonio y partícipes diarios por clase."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/fund_nav_daily/**/*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_nav_daily/**/*.parquet', hive_partitioning=true)"
       - name: fund_metadata
         description: "FONDREGISTRO: identificativos, gestora y depositario por clase y periodo."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/fund_metadata/**/*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_metadata/**/*.parquet', hive_partitioning=true)"
       - name: fund_quarterly
         description: "FONDTRIM: snapshot semestral por clase (vocación, divisas, comisiones, rentabilidad y volatilidad oficiales)."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/fund_quarterly/**/*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_quarterly/**/*.parquet', hive_partitioning=true)"
       - name: fund_holdings
         description: "FONDCART: posiciones de cartera por compartimento y periodo."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/fund_holdings/**/*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_holdings/**/*.parquet', hive_partitioning=true)"
       - name: fund_period_financials
         description: "FONDPATRIMDISVAR: gastos, ingresos, flujo neto y patrimonios por compartimento y periodo."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/fund_period_financials/**/*.parquet', hive_partitioning=true)"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_period_financials/**/*.parquet', hive_partitioning=true)"
       - name: estr_daily
         description: "BCE: índice compuesto del €STR diario."
         meta:
-          external_location: "read_parquet('{{ var('silver_root') }}/estr_daily/**/*.parquet')"
+          external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/estr_daily/**/*.parquet')"

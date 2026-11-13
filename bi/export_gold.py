@@ -7,9 +7,10 @@ from pathlib import Path
 
 import duckdb
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "data/gold/cnmv.duckdb"
-DEFAULT_OUT = ROOT / "data/exports/gold_bi"
+from config import EXPORTS_DIR, GOLD_DIR
+
+DEFAULT_DB = GOLD_DIR / "cnmv.duckdb"
+DEFAULT_OUT = EXPORTS_DIR / "gold_bi"
 
 PREFIXES = ("dim_", "fact_", "mart_", "meta_")
 EXCLUDED = {
@@ -61,7 +62,8 @@ def export_table(con: duckdb.DuckDBPyConnection, table: str, out_dir: Path) -> d
         f"copy (select * from main.\"{table}\") to '{dest_sql}' "
         "(format parquet, compression zstd)"
     )
-    rows = con.execute(f'select count(*) from main."{table}"').fetchone()[0]
+    count_row = con.execute(f'select count(*) from main."{table}"').fetchone()
+    rows = count_row[0] if count_row else 0
     columns = [
         r[0] for r in con.execute(f'describe select * from main."{table}"').fetchall()
     ]

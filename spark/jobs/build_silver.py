@@ -1,7 +1,9 @@
-#   python -m spark.jobs.build_silver
-#   python -m spark.jobs.build_silver data/bronze
+#   python -m spark.jobs.build_silver                  # every bronze period
+#   python -m spark.jobs.build_silver --period 202605  # a single period
+import argparse
 from pathlib import Path
 
+from config import BRONZE_DIR, ECB_RAW_DIR, SILVER_DIR
 from spark.common.session import get_spark
 from spark.parsing.estr import (
     parse_estr_csv,
@@ -58,13 +60,13 @@ from spark.parsing.fondtrim import (
     write_silver as write_quarterly,
 )
 
-NAV_OUT = "data/silver/fund_nav_daily"
-META_OUT = "data/silver/fund_metadata"
-QUARTERLY_OUT = "data/silver/fund_quarterly"
-HOLDINGS_OUT = "data/silver/fund_holdings"
-FINANCIALS_OUT = "data/silver/fund_period_financials"
-ESTR_OUT = "data/silver/estr_daily"
-ECB_DIR = Path("data/raw/ecb")
+NAV_OUT = str(SILVER_DIR / "fund_nav_daily")
+META_OUT = str(SILVER_DIR / "fund_metadata")
+QUARTERLY_OUT = str(SILVER_DIR / "fund_quarterly")
+HOLDINGS_OUT = str(SILVER_DIR / "fund_holdings")
+FINANCIALS_OUT = str(SILVER_DIR / "fund_period_financials")
+ESTR_OUT = str(SILVER_DIR / "estr_daily")
+ECB_DIR = ECB_RAW_DIR
 
 
 def periods_in(bronze_dir: Path) -> list[str]:
@@ -119,8 +121,31 @@ def build_estr(spark) -> int:
     return df.count()
 
 
-def main(bronze_dir: str = "data/bronze") -> int:
-    periodos = periods_in(Path(bronze_dir))
+def select_periods(available: list[str], period: str | None) -> list[str]:
+    if period is None:
+        return available
+    if period not in available:
+        raise ValueError(f"period {period} not in bronze (have {len(available)})")
+    return [period]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build Silver from Bronze")
+    parser.add_argument("--bronze-dir", type=Path, default=BRONZE_DIR)
+    parser.add_argument(
+        "--period", metavar="YYYYMM", help="build a single period, e.g. 202605"
+    )
+    args = parser.parse_args(argv)
+
+    available = periods_in(args.bronze_dir)
+    if not available:
+        print(f"No bronze periods under {args.bronze_dir}: run the ingestion first")
+        return 1
+    try:
+        periodos = select_periods(available, args.period)
+    except ValueError as e:
+        print(f"FAILED: {e}")
+        return 1
     print(f"{len(periodos)} bronze periods: {periodos[0]}..{periodos[-1]}")
 
     spark = get_spark("cnmv_build_silver")
@@ -128,7 +153,7 @@ def main(bronze_dir: str = "data/bronze") -> int:
     try:
         for periodo in periodos:
             try:
-                build_one(spark, periodo, Path(bronze_dir))
+                build_one(spark, periodo, args.bronze_dir)
                 hechos.append(periodo)
                 print(f"OK {periodo}")
             except Exception as e:  # noqa: BLE001 — bulk load: one bad period must not stop the run
@@ -146,6 +171,4 @@ def main(bronze_dir: str = "data/bronze") -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(*sys.argv[1:2]))
+    raise SystemExit(main())

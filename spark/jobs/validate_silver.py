@@ -20,6 +20,7 @@ from pathlib import Path
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
+from config import BRONZE_DIR, SILVER_DIR
 from spark.common.session import get_spark
 from spark.parsing.estr import EXPECTED_SCHEMA as ESTR_EXPECTED_SCHEMA
 from spark.parsing.fondcart import EXPECTED_SCHEMA as CART_EXPECTED_SCHEMA
@@ -29,15 +30,14 @@ from spark.parsing.fondpatrimdisvar import EXPECTED_SCHEMA as FIN_EXPECTED_SCHEM
 from spark.parsing.fondregistro import EXPECTED_SCHEMA as META_EXPECTED_SCHEMA
 from spark.parsing.fondtrim import EXPECTED_SCHEMA as TRIM_EXPECTED_SCHEMA
 
-BRONZE_DIR = Path("data/bronze")
-NAV_PATH = "data/silver/fund_nav_daily"
-META_PATH = "data/silver/fund_metadata"
-TRIM_PATH = "data/silver/fund_quarterly"
-CART_PATH = "data/silver/fund_holdings"
-FIN_PATH = "data/silver/fund_period_financials"
-ESTR_PATH = "data/silver/estr_daily"
+NAV_PATH = str(SILVER_DIR / "fund_nav_daily")
+META_PATH = str(SILVER_DIR / "fund_metadata")
+TRIM_PATH = str(SILVER_DIR / "fund_quarterly")
+CART_PATH = str(SILVER_DIR / "fund_holdings")
+FIN_PATH = str(SILVER_DIR / "fund_period_financials")
+ESTR_PATH = str(SILVER_DIR / "estr_daily")
 SEMESTER_MONTHS = {"06", "12"}
-EXPECTED_ESTR_SERIES = {"B.EU000A2QQF08.CI", "B.EU000A2QQF16.CR"}
+EXPECTED_ESTR_SERIES = {"EST.B.EU000A2QQF08.CI", "EST.B.EU000A2QQF16.CR"}
 
 # Partition column: on read-back Spark re-infers its type (int, not string) and
 # appends it last, so schema checks are order-agnostic and exempt its type.

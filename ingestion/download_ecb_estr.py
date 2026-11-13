@@ -11,6 +11,8 @@ from pathlib import Path
 
 import requests
 
+from config import ECB_RAW_DIR as RAW_DIR
+
 # ECB Data Portal, dataset EST (euro short-term rate). The two series we use:
 #   CI: compounded index, base 100 at 2019-10-01 (a NAV-like series)
 #   CR: compounded daily rate in percentage points (the actual benchmark rate)
@@ -19,7 +21,6 @@ SERIES = {
     "B.EU000A2QQF16.CR": ("estr_cr.csv", "estr compounded rate (%)"),
 }
 BASE_URL = "https://data-api.ecb.europa.eu/service/data/EST"
-RAW_DIR = Path("data/raw/ecb")
 MANIFEST_PATH = RAW_DIR / "manifest.csv"
 MANIFEST_FIELDS = ["series_key", "file_name", "downloaded_at", "sha256", "bytes"]
 CSV_HEADER = [
@@ -56,16 +57,15 @@ def append_manifest(row: dict, manifest: Path = MANIFEST_PATH) -> None:
         w.writerow(row)
 
 
-def download_series(key: str, dest_dir: Path = RAW_DIR) -> Path:
-    """Download one EST series as CSV unless the file already exists."""
+def download_series(key: str, dest_dir: Path = RAW_DIR) -> tuple[Path, bool]:
+    """Always fetch (the series grows daily); keep the new file only if valid and
+    different. Returns (path, changed); the manifest logs only real changes."""
     name, _ = SERIES[key]
     dest = dest_dir / name
-    if dest.exists():
-        return dest
+    part = dest_dir / f"{name}.part"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     url = f"{BASE_URL}/{key}?format=csvdata"
-    part = dest_dir / f"{name}.part"
     with requests.get(url, stream=True, timeout=60) as resp:
         resp.raise_for_status()
         with open(part, "wb") as f:
@@ -73,18 +73,28 @@ def download_series(key: str, dest_dir: Path = RAW_DIR) -> Path:
                 if chunk:
                     f.write(chunk)
 
+    try:
+        save_key_from_csv(part)
+    except Exception:
+        part.unlink(missing_ok=True)
+        raise
+
+    new_hash = sha256_of(part)
+    if dest.exists() and sha256_of(dest) == new_hash:
+        part.unlink()
+        return dest, False
+
     part.replace(dest)
-    save_key_from_csv(dest)
     append_manifest(
         {
             "series_key": key,
             "file_name": name,
             "downloaded_at": dt.datetime.now(dt.UTC).isoformat(),
-            "sha256": sha256_of(dest),
+            "sha256": new_hash,
             "bytes": dest.stat().st_size,
         }
     )
-    return dest
+    return dest, True
 
 
 def sha256_of(path: Path) -> str:
@@ -124,9 +134,10 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         return 0
 
-    for key, (name, label) in SERIES.items():
-        path = download_series(key)
-        print(f"{label}: data/raw/ecb/{name} (sha256 {sha256_of(path)[:16]}...)")
+    for key, (_, label) in SERIES.items():
+        path, changed = download_series(key)
+        estado = "updated" if changed else "unchanged"
+        print(f"{label}: {path} {estado} (sha256 {sha256_of(path)[:16]}...)")
     return 0
 
 

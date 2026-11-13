@@ -4,7 +4,8 @@ config-version: 2
 profile: cnmv
 
 vars:
-  silver_root: "../data/silver"
+  # silver_root (not set here on purpose): defaults to $CNMV_DATA_DIR/silver in
+  # models/staging/_sources.yml; override with --vars (CI points it at the fixture).
 
   # as_of_period (not set here on purpose): cut-off of the run, 'latest' by default
   # (last period in Silver) or an explicit YYYYMM, e.g. --vars '{as_of_period: "202604"}'.

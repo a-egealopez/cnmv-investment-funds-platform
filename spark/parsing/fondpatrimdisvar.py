@@ -8,7 +8,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 # Every non-key compartment field is TipoDecimal2 in the XSD. Some are monetary
 # (distribution and period-end patrimony), the rest are percentages since the
@@ -135,23 +135,6 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/fund_period_financials"):
+def write_silver(df, path=str(SILVER_DIR / "fund_period_financials")):
     # Needs partitionOverwriteMode=dynamic (set in get_spark)
     df.write.mode("overwrite").partitionBy("FechaDatos").parquet(path)
-
-
-def main(input_path: str, output_path: str):
-    spark = get_spark("fondpatrimdisvar_parser")
-    try:
-        df = parse_fondpatrimdisvar_xml(spark, input_path)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.fondpatrimdisvar data/bronze/cnmv_202512/FONDPATRIMDISVAR_202512.xml data/silver/fund_period_financials
-    main(sys.argv[1], sys.argv[2])

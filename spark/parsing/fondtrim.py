@@ -8,7 +8,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 # Reusable types mirroring the XSD restrictions
 _DEC2 = DecimalType(18, 2)  # TipoDecimal2: fractionDigits 2
@@ -236,23 +236,6 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/fund_quarterly"):
+def write_silver(df, path=str(SILVER_DIR / "fund_quarterly")):
     # Needs partitionOverwriteMode=dynamic (set in get_spark)
     df.write.mode("overwrite").partitionBy("FechaDatos").parquet(path)
-
-
-def main(input_path: str, output_path: str):
-    spark = get_spark("fondtrim_parser")
-    try:
-        df = parse_fondtrim_xml(spark, input_path)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.fondtrim data/bronze/cnmv_202512/FONDTRIM_202512.xml data/silver/fund_quarterly
-    main(sys.argv[1], sys.argv[2])

@@ -375,9 +375,9 @@ def test_period_coverage_casts_partition_column_to_string(spark):
 
 
 def test_estr_series_detects_missing_rate_series(spark):
-    df = spark.createDataFrame([("B.EU000A2QQF08.CI",)], ["series"])
+    df = spark.createDataFrame([("EST.B.EU000A2QQF08.CI",)], ["series"])
 
     violations, detail = check_estr_series(df)
 
     assert violations == 1
-    assert "B.EU000A2QQF16.CR" in detail
+    assert "EST.B.EU000A2QQF16.CR" in detail

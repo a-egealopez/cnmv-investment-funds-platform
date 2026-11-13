@@ -3,7 +3,7 @@ cnmv:
   outputs:
     local:
       type: duckdb
-      path: "../data/gold/cnmv.duckdb"
+      path: "{{ env_var('CNMV_DATA_DIR', '../data') }}/gold/cnmv.duckdb"
       schema: main
       threads: 4
     ci:

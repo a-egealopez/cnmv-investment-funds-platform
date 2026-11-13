@@ -99,3 +99,72 @@ def test_extract_to_bronze_does_not_mark_missing_core_file(tmp_path):
         extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
 
     assert not (tmp_path / "bronze" / f"cnmv_{periodo}" / COMPLETE_MARKER).exists()
+
+
+def _patch_pipeline(monkeypatch, pares, fail_on=()):
+    import ingestion.download_history as mod
+
+    monkeypatch.setattr(mod, "fetch_year_html", lambda year: "")
+    monkeypatch.setattr(mod, "parse_year_page", lambda html, year: pares)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    seen = []
+
+    def fake_ingest(periodo, url):
+        if periodo in fail_on:
+            raise ValueError("boom")
+        seen.append(periodo)
+
+    monkeypatch.setattr(mod, "ingest_period", fake_ingest)
+    return seen
+
+
+PARES = [("202601", "u1"), ("202602", "u2")]
+
+
+def test_run_history_reports_failed_periods(monkeypatch):
+    from ingestion.download_history import run_history
+
+    seen = _patch_pipeline(monkeypatch, PARES, fail_on={"202602"})
+    hechos, fallidos = run_history(range(2026, 2027))
+
+    assert hechos == ["202601"]
+    assert fallidos == ["202602"]
+    assert seen == ["202601"]
+
+
+def test_main_run_exits_nonzero_when_a_period_fails(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES, fail_on={"202602"})
+    assert main(["--run", "2026-2026"]) == 1
+
+
+def test_main_run_exits_zero_when_all_ok(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES)
+    assert main(["--run", "2026-2026"]) == 0
+
+
+def test_main_period_ingests_only_that_month(monkeypatch):
+    from ingestion.download_history import main
+
+    seen = _patch_pipeline(monkeypatch, PARES)
+    assert main(["--period", "202602"]) == 0
+    assert seen == ["202602"]
+
+
+def test_main_period_not_published_is_a_failure(monkeypatch):
+    from ingestion.download_history import main
+
+    seen = _patch_pipeline(monkeypatch, PARES)
+    assert main(["--period", "202612"]) == 1
+    assert seen == []
+
+
+def test_main_period_rejects_bad_format(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES)
+    with pytest.raises(SystemExit):
+        main(["--period", "2026-05"])

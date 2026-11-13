@@ -7,7 +7,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from spark.common.session import get_spark
+from config import SILVER_DIR
 
 _DEC8 = DecimalType(18, 8)
 
@@ -42,25 +42,7 @@ def validate_schema(df):
     )
 
 
-def write_silver(df, path="data/silver/estr_daily"):
+def write_silver(df, path=str(SILVER_DIR / "estr_daily")):
     # Needs partitionOverwriteMode=dynamic only when partitioned; the table is
     # small enough for a plain full overwrite, which is idempotent by design.
     df.write.mode("overwrite").parquet(path)
-
-
-def main(input_paths: list[str], output_path: str):
-    spark = get_spark("estr_parser")
-    try:
-        df = parse_estr_csv(spark, input_paths)
-        validate_schema(df)
-        write_silver(df, output_path)
-    finally:
-        spark.stop()
-
-
-if __name__ == "__main__":
-    import sys
-
-    # Example: python -m spark.parsing.estr data/raw/ecb/estr_ci.csv,data/raw/ecb/estr_cr.csv data/silver/estr_daily
-    paths = sys.argv[1].split(",")
-    main(paths, sys.argv[2])
