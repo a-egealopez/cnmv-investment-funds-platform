@@ -1,6 +1,7 @@
-# Pins live in the two files below; do not repeat them here.
--r requirements-runtime.txt
--r requirements-dbt.txt
+# Pins live in requirements/; do not repeat them here.
+-r requirements/ingestion.txt
+-r requirements/spark.txt
+-r requirements/dbt.txt
 
 # Development only
 matplotlib==3.11.2

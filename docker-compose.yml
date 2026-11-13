@@ -32,4 +32,9 @@ services:
       dockerfile: docker/dbt/Dockerfile
     volumes:
       - ./data:/data
-      
+
+  export:
+    image: cnmv-dbt
+    entrypoint: ["python", "-m", "bi.export_gold"]
+    volumes:
+      - ./data:/data

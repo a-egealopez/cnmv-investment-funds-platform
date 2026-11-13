@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-COPY requirements-ingestion.txt ./
-RUN pip install --no-cache-dir -r requirements-ingestion.txt
+COPY requirements/ingestion.txt ./
+RUN pip install --no-cache-dir -r ingestion.txt
 
 COPY config.py ./
 COPY ingestion/ ingestion/
@@ -14,4 +14,4 @@ USER app
 
 ENV CNMV_DATA_DIR=/data
 
-ENTRYPOINT ["python", "-m", "ingestion.download_history"]
+ENTRYPOINT ["python", "-m", "ingestion.run"]

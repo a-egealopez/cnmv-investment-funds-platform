@@ -5,7 +5,6 @@ data/
 notebooks/
 docs/
 tests/
-bi/
 dbt/target/
 dbt/logs/
 dbt/dbt_packages/

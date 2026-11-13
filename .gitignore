@@ -1,5 +1,6 @@
 .venv/
-data/
+data/*
+!data/.gitkeep
 *.duckdb
 __pycache__/
 *.pyc
@@ -14,3 +15,4 @@ tests/fixtures/silver
 dbt_packages/
 docs/technical/power_bi_guide.md
 bi/power_bi_theme.json
+.vscode/

@@ -6,8 +6,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements-spark.txt ./
-RUN pip install --no-cache-dir -r requirements-spark.txt
+COPY requirements/spark.txt ./
+RUN pip install --no-cache-dir -r spark.txt
 
 COPY config.py ./
 COPY spark/ spark/
