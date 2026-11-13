@@ -12,3 +12,5 @@ dbt/dbt_packages/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+airflow/
+dags/

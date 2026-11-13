@@ -16,3 +16,5 @@ dbt_packages/
 docs/technical/power_bi_guide.md
 bi/power_bi_theme.json
 .vscode/
+airflow/.env
+airflow/logs/

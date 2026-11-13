@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from config import BRONZE_DIR, ECB_RAW_DIR, SILVER_DIR
+from config import BRONZE_DIR, COMPLETE_MARKER, ECB_RAW_DIR, SILVER_DIR
 from spark.common.session import get_spark
 from spark.parsing.estr import (
     parse_estr_csv,
@@ -76,6 +76,38 @@ def periods_in(bronze_dir: Path) -> list[str]:
     )
 
 
+PROCESSED_DIR = SILVER_DIR / "_processed"
+
+
+def bronze_fingerprint(bronze_dir: Path, periodo: str) -> str | None:
+    """sha256 of the zip behind a bronze period; None if its extraction is incomplete."""
+    marker = bronze_dir / f"cnmv_{periodo}" / COMPLETE_MARKER
+    return marker.read_text().strip() if marker.exists() else None
+
+
+def processed_fingerprint(processed_dir: Path, periodo: str) -> str | None:
+    """Fingerprint the period had when it was last built into Silver, if ever."""
+    marker = processed_dir / f"cnmv_{periodo}"
+    return marker.read_text().strip() if marker.exists() else None
+
+
+def mark_processed(processed_dir: Path, periodo: str, fingerprint: str) -> None:
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    (processed_dir / f"cnmv_{periodo}").write_text(fingerprint + "\n")
+
+
+def pending_periods(bronze_dir: Path, processed_dir: Path) -> list[str]:
+    """Complete bronze periods never built, or whose source zip changed since."""
+    pending = []
+    for periodo in periods_in(bronze_dir):
+        fingerprint = bronze_fingerprint(bronze_dir, periodo)
+        if fingerprint is None:
+            continue  # extraction unfinished: do not build from a partial period
+        if fingerprint != processed_fingerprint(processed_dir, periodo):
+            pending.append(periodo)
+    return pending
+
+
 def build_one(spark, periodo: str, bronze_dir: Path) -> None:
     """Parse and write the silver datasets available for one period."""
     mes = bronze_dir / f"cnmv_{periodo}"
@@ -132,8 +164,15 @@ def select_periods(available: list[str], period: str | None) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build Silver from Bronze")
     parser.add_argument("--bronze-dir", type=Path, default=BRONZE_DIR)
-    parser.add_argument(
+
+    which = parser.add_mutually_exclusive_group()
+    which.add_argument(
         "--period", metavar="YYYYMM", help="build a single period, e.g. 202605"
+    )
+    which.add_argument(
+        "--pending",
+        action="store_true",
+        help="build only periods that are new or whose bronze changed since last built",
     )
     args = parser.parse_args(argv)
 
@@ -142,11 +181,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No bronze periods under {args.bronze_dir}: run the ingestion first")
         return 1
     try:
-        periodos = select_periods(available, args.period)
+        if args.pending:
+            periodos = pending_periods(args.bronze_dir, PROCESSED_DIR)
+        else:
+            periodos = select_periods(available, args.period)
     except ValueError as e:
         print(f"FAILED: {e}")
         return 1
-    print(f"{len(periodos)} bronze periods: {periodos[0]}..{periodos[-1]}")
+    if periodos:
+        print(f"{len(periodos)} bronze periods: {periodos[0]}..{periodos[-1]}")
+    else:
+        print("0 periods pending: Silver is up to date")
 
     spark = get_spark("cnmv_build_silver")
     hechos: list[str] = []
@@ -154,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
         for periodo in periodos:
             try:
                 build_one(spark, periodo, args.bronze_dir)
+                fingerprint = bronze_fingerprint(args.bronze_dir, periodo)
+                if fingerprint is not None:
+                    mark_processed(PROCESSED_DIR, periodo, fingerprint)
                 hechos.append(periodo)
                 print(f"OK {periodo}")
             except Exception as e:  # noqa: BLE001 — bulk load: one bad period must not stop the run

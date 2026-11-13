@@ -16,7 +16,7 @@ from pathlib import Path
 import lxml.html
 import requests
 
-from config import BRONZE_DIR, RAW_DIR
+from config import BRONZE_DIR, COMPLETE_MARKER, RAW_DIR
 
 BASE_URL = (
     "https://www.cnmv.es/portal/publicaciones/descarga-informacion-individual.aspx"
@@ -25,7 +25,6 @@ TABLE_ID = "ctl00_ContentPrincipal_grdDescargas"
 
 MANIFEST_PATH = RAW_DIR / "manifest.csv"
 MANIFEST_FIELDS = ["periodo", "url", "downloaded_at", "sha256", "bytes", "zip_name"]
-COMPLETE_MARKER = ".complete"
 
 MESES = {
     "Enero": "01",
@@ -53,12 +52,16 @@ def fetch_year_html(year: int, timeout: int = 30) -> str:
     return resp.text
 
 
+class YearNotPublished(ValueError):
+    """The year index page lists no downloads yet (e.g. in January)."""
+
+
 def parse_year_page(html: str, year: int) -> list[tuple[str, str]]:
     """Extract (periodo, zip_url) pairs from a year index page."""
     doc = lxml.html.fromstring(html)
     tables = doc.xpath(f'//*[@id="{TABLE_ID}"]')
     if not tables:
-        raise ValueError(f"download grid not found (id={TABLE_ID})")
+        raise YearNotPublished(f"download grid not found (id={TABLE_ID})")
 
     pares: list[tuple[str, str]] = []
     for tr in tables[0].xpath("./tbody/tr"):
@@ -75,7 +78,7 @@ def parse_year_page(html: str, year: int) -> list[tuple[str, str]]:
     if len(periodos) != len(set(periodos)):
         raise ValueError(f"duplicate periods: {sorted(periodos)}")
     if not pares:
-        raise ValueError("no download rows found")
+        raise YearNotPublished("no download rows found")
 
     # Closed years must have all 12 months published.
     if year < dt.date.today().year and len(pares) != 12:
@@ -230,7 +233,10 @@ def ingest_period(periodo: str, url: str) -> Path:
 
 
 def run_history(
-    years: range, periodo: str | None = None, delay: float = 1.0
+    years: range,
+    periodo: str | None = None,
+    delay: float = 1.0,
+    since: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Returns (done, failed); the caller exits non-zero on any failure, which
     is the only signal a scheduler gets."""
@@ -243,6 +249,17 @@ def run_history(
                 pares = [(p, u) for p, u in pares if p == periodo]
                 if not pares:
                     raise ValueError(f"period {periodo} not published for {year}")
+            if since is not None:
+                pares = [(p, u) for p, u in pares if p >= since]
+
+        except YearNotPublished as e:
+            if since is not None and year == dt.date.today().year:
+                print(f"no downloads published yet for {year}")
+            else:
+                print(f"FAILED year {year}: {e}")
+                fallidos.append(f"year {year}")
+            continue
+
         except Exception as e:  # noqa: BLE001 — bulk load: one bad year must not stop the run
             print(f"FAILED year {year}: {e}")
             fallidos.append(f"year {year}")
@@ -275,16 +292,30 @@ def main(argv: list[str] | None = None) -> int:
         metavar="YYYYMM",
         help="download and extract a single period, e.g. 202605",
     )
+    parser.add_argument(
+        "--since",
+        metavar="YYYYMM",
+        help="download every published period from YYYYMM up to today, e.g. 202301",
+    )
+
     args = parser.parse_args(argv)
 
-    if args.run and args.period:
-        parser.error("use --run or --period, not both")
+    if sum(bool(opt) for opt in (args.run, args.period, args.since)) > 1:
+        parser.error("use only one of --run, --period or --since")
+
+    for flag in ("period", "since"):
+        value = getattr(args, flag)
+        if value and not (len(value) == 6 and value.isdigit()):
+            parser.error(f"--{flag} must look like YYYYMM, e.g. 202605")
 
     if args.period:
-        if not (len(args.period) == 6 and args.period.isdigit()):
-            parser.error("--period must look like YYYYMM, e.g. 202605")
         year = int(args.period[:4])
         _, fallidos = run_history(range(year, year + 1), periodo=args.period)
+        return 1 if fallidos else 0
+
+    if args.since:
+        years = range(int(args.since[:4]), dt.date.today().year + 1)
+        _, fallidos = run_history(years, since=args.since)
         return 1 if fallidos else 0
 
     if args.run:

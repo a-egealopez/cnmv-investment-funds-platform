@@ -168,3 +168,77 @@ def test_main_period_rejects_bad_format(monkeypatch):
     _patch_pipeline(monkeypatch, PARES)
     with pytest.raises(SystemExit):
         main(["--period", "2026-05"])
+
+
+def test_run_history_since_skips_earlier_periods(monkeypatch):
+    from ingestion.download_history import run_history
+
+    seen = _patch_pipeline(monkeypatch, PARES)
+    hechos, fallidos = run_history(range(2026, 2027), since="202602")
+
+    assert hechos == ["202602"]
+    assert fallidos == []
+    assert seen == ["202602"]
+
+
+def test_main_since_exits_zero_when_all_ok(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES)
+    assert main(["--since", "202601"]) == 0
+
+
+def test_main_since_rejects_bad_format(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES)
+    with pytest.raises(SystemExit):
+        main(["--since", "2026"])
+
+
+def test_main_since_cannot_be_combined_with_period(monkeypatch):
+    from ingestion.download_history import main
+
+    _patch_pipeline(monkeypatch, PARES)
+    with pytest.raises(SystemExit):
+        main(["--since", "202601", "--period", "202602"])
+
+
+def _patch_year_pages(monkeypatch, missing_year):
+    import ingestion.download_history as mod
+
+    def fake_parse(html, year):
+        if year == missing_year:
+            raise mod.YearNotPublished("download grid not found")
+        return [(f"{year}12", "u")]
+
+    monkeypatch.setattr(mod, "fetch_year_html", lambda year: "")
+    monkeypatch.setattr(mod, "parse_year_page", fake_parse)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(mod, "ingest_period", lambda periodo, url: None)
+    return mod
+
+
+def test_since_tolerates_a_current_year_without_downloads(monkeypatch):
+    import datetime as dt
+
+    this_year = dt.date.today().year
+    mod = _patch_year_pages(monkeypatch, missing_year=this_year)
+
+    hechos, fallidos = mod.run_history(
+        range(this_year - 1, this_year + 1), since="202001"
+    )
+
+    assert fallidos == []
+    assert hechos == [f"{this_year - 1}12"]
+
+
+def test_since_still_fails_when_a_closed_year_has_no_grid(monkeypatch):
+    import datetime as dt
+
+    this_year = dt.date.today().year
+    mod = _patch_year_pages(monkeypatch, missing_year=this_year - 1)
+
+    _, fallidos = mod.run_history(range(this_year - 1, this_year + 1), since="202001")
+
+    assert fallidos == [f"year {this_year - 1}"]

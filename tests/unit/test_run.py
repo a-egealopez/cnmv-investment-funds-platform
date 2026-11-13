@@ -49,3 +49,14 @@ def test_period_is_required():
     with pytest.raises(SystemExit) as exc:
         run.main([])
     assert exc.value.code == 2
+
+
+def test_since_is_forwarded(calls):
+    assert run.main(["--since", "202301"]) == 0
+    assert calls["cnmv"] == ["--since", "202301"]
+
+
+def test_period_and_since_are_mutually_exclusive():
+    with pytest.raises(SystemExit) as exc:
+        run.main(["--period", "202606", "--since", "202301"])
+    assert exc.value.code == 2

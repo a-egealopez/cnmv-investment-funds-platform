@@ -1,4 +1,5 @@
-#    python -m ingestion.run --period 202606
+# python -m ingestion.run --period 202606    # one period
+# python -m ingestion.run --since 202301     # every published period from then on
 
 from __future__ import annotations
 
@@ -9,10 +10,18 @@ from ingestion import download_ecb_estr, download_history
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CNMV period + ECB €STR ingestion")
-    parser.add_argument("--period", required=True, metavar="YYYYMM", help="e.g. 202606")
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--period", metavar="YYYYMM", help="one period, e.g. 202606")
+    group.add_argument(
+        "--since",
+        metavar="YYYYMM",
+        help="every published period from YYYYMM on, e.g. 202301",
+    )
     args = parser.parse_args(argv)
 
-    cnmv_status = download_history.main(["--period", args.period])
+    cnmv_args = ["--period", args.period] if args.period else ["--since", args.since]
+    cnmv_status = download_history.main(cnmv_args)
 
     try:
         ecb_status = download_ecb_estr.main([])

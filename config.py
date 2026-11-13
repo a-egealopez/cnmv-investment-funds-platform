@@ -18,3 +18,7 @@ GOLD_DIR = DATA_DIR / "gold"
 EXPORTS_DIR = DATA_DIR / "exports"
 
 ECB_RAW_DIR = RAW_DIR / "ecb"
+
+# Written last by the ingestion once a bronze period is fully extracted; it holds the
+# sha256 of the source zip. The Silver build compares it to know what is new or changed.
+COMPLETE_MARKER = ".complete"
