@@ -165,7 +165,8 @@ class_quality as (
     select
         m.*,
         case
-            when m.first_week > m.window_start + {{ var('max_edge_gap_weeks') }} * interval '7 days'
+            -- +1 day: if window_start is a Saturday, the first weekday's week ends 8 days later.
+            when m.first_week > m.window_start + ({{ var('max_edge_gap_weeks') }} * 7 + 1) * interval '1 day'
                 then 'short_history'
             when m.n_dormant_weeks > 0 then 'dormant'
             when m.n_extreme > 0 then 'extreme_return'

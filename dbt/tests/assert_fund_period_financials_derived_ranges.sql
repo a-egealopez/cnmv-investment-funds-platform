@@ -7,7 +7,7 @@ where
     or other_expense_yield_rate < 0
     or charged_expense_yield_rate < 0
     or income_yield_rate < 0
-    -- core_fee_share is a ratio: 1 is valid; the epsilon absorbs floating-point noise.
+    -- No upper bound on core_fee_share: when the other charged items net to a credit
+    -- (positive sign), core fees legitimately exceed total charged expenses.
     or core_fee_share < -1e-9
-    or core_fee_share > 1 + 1e-9
     or fee_revenue_proxy < 0

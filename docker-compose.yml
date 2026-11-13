@@ -1,0 +1,35 @@
+services:
+  ingestion:
+    image: cnmv-ingestion
+    build:
+      context: .
+      dockerfile: docker/ingestion/Dockerfile
+    volumes:
+      - ./data:/data
+  
+  spark:
+    image: cnmv-spark
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    environment:
+      SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-3g}
+    volumes:
+      - ./data:/data
+  
+  validate:
+    image: cnmv-spark
+    entrypoint: ["python", "-m", "spark.jobs.validate_silver"]
+    environment:
+      SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-3g}
+    volumes:
+      - ./data:/data
+
+  dbt:
+    image: cnmv-dbt
+    build:
+      context: .
+      dockerfile: docker/dbt/Dockerfile
+    volumes:
+      - ./data:/data
+      
