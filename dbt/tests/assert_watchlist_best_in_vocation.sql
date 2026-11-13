@@ -17,7 +17,7 @@ with peers as (
     from {{ ref('int_representative_class') }} as r
     inner join {{ ref('dim_compartment') }} as c
         on c.compartment_key = r.compartment_key
-    inner join {{ ref('int_class_metrics_36m') }} as m
+    inner join {{ ref('int_class_metrics') }} as m
         on m.class_key = r.class_key
     where r.is_representative
       and m.class_status = 'eligible'
@@ -28,20 +28,17 @@ with peers as (
 
 selected as (
 
-    select compartment_id as compartment_key
-    from {{ ref('mart_fund_watchlist') }}
-    where watchlist_status = 'selected'
+    select compartment_key, vocation
+    from {{ ref('int_fund_peer_ranking') }}
+    where watchlist_rank is not null
 
 ),
 
 -- Vocaciones con al menos un fondo seleccionado.
 selected_vocations as (
 
-    select distinct c.vocation
-    from {{ ref('mart_fund_watchlist') }} as w
-    inner join {{ ref('dim_compartment') }} as c
-        on c.compartment_id = w.compartment_id
-    where w.watchlist_status = 'selected'
+    select distinct vocation
+    from selected
 
 )
 
@@ -60,4 +57,4 @@ where p.rank_in_vocation = 1
       where s.compartment_key = p.compartment_key
   )
   -- Si la watchlist esta truncada por el tope global, el mejor puede quedar fuera legitimo.
-  and (select count(*) from selected) < {{ var('watchlist_max', 20) }}
+  and (select count(*) from selected) < {{ var('watchlist_max') }}

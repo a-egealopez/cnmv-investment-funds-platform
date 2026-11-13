@@ -8,6 +8,16 @@ models:
           arguments:
             combination_of_columns: [class_key, value_date]
     columns:
+      - name: class_number
+        description: "Campo `NumeroClase` de FONDMENS."
+      - name: compartment_number
+        description: "Campo `NumeroCompartimento` de FONDMENS."
+      - name: registration_number
+        description: "Campo `NumeroRegistro` de FONDMENS."
+      - name: fund_type
+        description: "Campo `Tipo` de FONDMENS."
+      - name: isin
+        description: "Campo `ISIN` de FONDMENS."
       - name: class_key
         description: "fund_type|registration_number|compartment_number|class_number"
         tests: [not_null]
@@ -40,20 +50,50 @@ models:
           arguments:
             combination_of_columns: [class_key, period]
     columns:
+      - name: depositary_group_name
+        description: "Campo `DenominacionGrupoDepositario` de FONDREGISTRO."
+      - name: depositary_registration_number
+        description: "Campo `NumeroRegistroDepositario` de FONDREGISTRO."
+      - name: depositary_name
+        description: "Campo `DenominacionDepositario` de FONDREGISTRO."
+      - name: manager_group_name
+        description: "Campo `DenominacionGrupoGestora` de FONDREGISTRO."
+      - name: manager_type
+        description: "Campo `TipoGestora` de FONDREGISTRO."
+      - name: manager_name
+        description: "Campo `DenominacionGestora` de FONDREGISTRO."
+      - name: manager_registration_number
+        description: "Campo `NumeroRegistroGestora` de FONDREGISTRO."
+      - name: class_name
+        description: "Campo `DenominacionClase` de FONDREGISTRO."
+      - name: class_number
+        description: "Campo `NumeroClase` de FONDREGISTRO."
+      - name: compartment_name
+        description: "Campo `DenominacionCompartimento` de FONDREGISTRO."
+      - name: compartment_number
+        description: "Campo `NumeroCompartimento` de FONDREGISTRO."
+      - name: is_etf
+        description: "Campo `ETF` de FONDREGISTRO."
+      - name: fund_name
+        description: "Campo `Denominacion` de FONDREGISTRO."
+      - name: registration_number
+        description: "Campo `NumeroRegistro` de FONDREGISTRO."
+      - name: fund_type
+        description: "Campo `Tipo` de FONDREGISTRO."
       - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
         tests: [not_null]
       - name: isin
         description: "Puede faltar en algunos periodos del trimestral; en metadata hoy no hay nulos."
-        tests:
-          - not_null:
-              config:
-                severity: warn
 
   - name: stg_fund_quarterly
     description: "Snapshot semestral por clase: vocación, divisa, comisiones, rentabilidad, volatilidad y TER oficiales. Grano: class_key x period."
@@ -62,20 +102,92 @@ models:
           arguments:
             combination_of_columns: [class_key, period]
     columns:
+      - name: total_expense_ratio_t3_rate
+        description: "Campo `RatioTotalGastos_T_3` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: total_expense_ratio_t2_rate
+        description: "Campo `RatioTotalGastos_T_2` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: total_expense_ratio_t1_rate
+        description: "Campo `RatioTotalGastos_T_1` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: total_expense_ratio_quarter_rate
+        description: "Campo `RatioTotalGastos_TrimestreActual` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: volatility_t3_rate
+        description: "Campo `Volatilidad_T_3` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: volatility_t2_rate
+        description: "Campo `Volatilidad_T_2` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: volatility_t1_rate
+        description: "Campo `Volatilidad_T_1` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: volatility_quarter_rate
+        description: "Campo `Volatilidad_TrimestreActual` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: nav_frequency
+        description: "Campo `PeriodicidadCalculoVL` de FONDTRIM."
+      - name: return_t3_rate
+        description: "Campo `Rentabilidad_T_3` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: return_t2_rate
+        description: "Campo `Rentabilidad_T_2` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: return_t1_rate
+        description: "Campo `Rentabilidad_T_1` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: return_quarter_rate
+        description: "Campo `Rentabilidad_TrimestreActual` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: discount_fee_min_rate
+        description: "Campo `ComisionDescuentoFavorFondoMinima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: discount_fee_max_rate
+        description: "Campo `ComisionDescuentoFavorFondoMaxima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: redemption_fee_min_rate
+        description: "Campo `ComisionReembolsoMinima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: redemption_fee_max_rate
+        description: "Campo `ComisionReembolsoMaxima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: subscription_fee_min_rate
+        description: "Campo `ComisionSuscripcionMinima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: subscription_fee_max_rate
+        description: "Campo `ComisionSuscripcionMaxima` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: fee_imputation_system
+        description: "Campo `SistemaImputacionComisiones` de FONDTRIM."
+      - name: depositary_fee_rate
+        description: "Campo `ComisionDepositario` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: management_fee_base
+        description: "Campo `BaseCalculo_ComisionGestion` de FONDTRIM."
+      - name: management_fee_rate
+        description: "Campo `ComisionGestion` de FONDTRIM, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: nav
+        description: "Campo `ValorLiquidativo` de FONDTRIM."
+      - name: aum
+        description: "Campo `Patrimonio` de FONDTRIM."
+      - name: gross_dividend
+        description: "Campo `Beneficio_Dividendo_Bruto` de FONDTRIM."
+      - name: units
+        description: "Campo `NumeroParticipaciones` de FONDTRIM."
+      - name: participants
+        description: "Campo `NumeroParticipes` de FONDTRIM."
+      - name: class_currency_code
+        description: "Campo `CodigoDivisa` de FONDTRIM."
+      - name: class_number
+        description: "Campo `NumeroClase` de FONDTRIM."
+      - name: fund_class
+        description: "Campo `ClaseFondo` de FONDTRIM."
+      - name: vocation
+        description: "Campo `VocacionInversora` de FONDTRIM."
+      - name: compartment_number
+        description: "Campo `NumeroCompartimento` de FONDTRIM."
+      - name: iic_currency_code
+        description: "Campo `CodigoDivisaIIC` de FONDTRIM."
+      - name: registration_number
+        description: "Campo `NumeroRegistro` de FONDTRIM."
+      - name: fund_type
+        description: "Campo `Tipo` de FONDTRIM."
       - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
         tests: [not_null]
       - name: isin
         description: "13 nulos observados en 202306-202512; no es clave del grano."
-        tests:
-          - not_null:
-              config:
-                severity: warn
 
   - name: stg_fund_period_financials
     description: "FONDPATRIMDISVAR: distribución, gastos, ingresos, flujo neto y patrimonio por compartimento y periodo. Grano: compartment_key x period."
@@ -84,37 +196,123 @@ models:
           arguments:
             combination_of_columns: [compartment_key, period]
     columns:
+      - name: other_revenues_rate
+        description: "Campo `OtrosIngresos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: retroceded_commissions_rate
+        description: "Campo `ComisionesRetrocedidas` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: discount_commissions_rate
+        description: "Campo `ComisionesDescuento` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: income_rate
+        description: "Campo `Ingresos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: other_charged_expenses_rate
+        description: "Campo `OtrosGastosRepercutidos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: other_management_expenses_rate
+        description: "Campo `OtrosGastosGestion` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: external_services_expenses_rate
+        description: "Campo `GastosServiciosExteriores` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: depositary_fee_rate
+        description: "Campo `ComisionDepositario` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: management_fee_rate
+        description: "Campo `ComisionGestion` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: charged_expenses_rate
+        description: "Campo `GastosRepercutidos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: other_returns_rate
+        description: "Campo `OtrosRendimientos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: other_results_rate
+        description: "Campo `OtrosResultados` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: iic_results_rate
+        description: "Campo `ResultadosIIC` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: derivatives_results_rate
+        description: "Campo `ResultadosDerivados` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: deposit_results_rate
+        description: "Campo `ResultadosDepositos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: equity_results_rate
+        description: "Campo `ResultadosRentaVariable` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: fixed_income_results_rate
+        description: "Campo `ResultadosRentaFija` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: dividend_income_rate
+        description: "Campo `Dividendos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: interest_income_rate
+        description: "Campo `Intereses` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: management_income_rate
+        description: "Campo `RendimientosGestion` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: net_income_rate
+        description: "Campo `RendimientosNetos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: gross_distributed_profit_rate
+        description: "Campo `BeneficiosBrutosDistribuidos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: net_subscriptions_redemptions_rate
+        description: "Campo `Suscripciones_Reembolsos_Netos` de FONDPATRIMDISVAR, convertido de puntos porcentuales a fracción (0.01 = 1 %)."
+      - name: patrimony_current_period
+        description: "Campo `PatrimonioFinPeriodoActual` de FONDPATRIMDISVAR."
+      - name: patrimony_previous_period
+        description: "Campo `PatrimonioFinPeriodoAnterior` de FONDPATRIMDISVAR."
+      - name: other_assets
+        description: "Campo `Resto` de FONDPATRIMDISVAR."
+      - name: cash
+        description: "Campo `Liquidez` de FONDPATRIMDISVAR."
+      - name: doubtful_investments
+        description: "Campo `InversionesDudosas` de FONDPATRIMDISVAR."
+      - name: portfolio_interest
+        description: "Campo `InteresesCartera` de FONDPATRIMDISVAR."
+      - name: foreign_portfolio
+        description: "Campo `CarteraExterior` de FONDPATRIMDISVAR."
+      - name: domestic_portfolio
+        description: "Campo `CarteraInterior` de FONDPATRIMDISVAR."
+      - name: financial_investments
+        description: "Campo `DPInversionesFinancieras` de FONDPATRIMDISVAR."
+      - name: portfolio_turnover_previous
+        description: "Campo `IndiceRotacionCarteraAnterior` de FONDPATRIMDISVAR."
+      - name: portfolio_turnover_current
+        description: "Campo `IndiceRotacionCarteraActual` de FONDPATRIMDISVAR."
+      - name: compartment_number
+        description: "Campo `NumeroCompartimento` de FONDPATRIMDISVAR."
+      - name: icc_currency_code
+        description: "Campo `CodigoDivisaIIC` de FONDPATRIMDISVAR."
+      - name: registration_number
+        description: "Campo `NumeroRegistro` de FONDPATRIMDISVAR."
+      - name: fund_type
+        description: "Campo `Tipo` de FONDPATRIMDISVAR."
       - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
         tests: [not_null]
       - name: total_patrimony
         description: "Patrimonio monetario. Hay 1 nulo y 1 valor a cero en los datos reales; se tratan en calidad, no aquí."
-        tests:
-          - not_null:
-              config:
-                severity: warn
 
   - name: stg_fund_holdings
     description: "FONDCART: posiciones de cartera por compartimento y periodo. Grano:  compartment_key x period x linea (puede haber líneas repetidas del mismo instrumento)."
     columns:
+      - name: asset_currency
+        description: "Campo `Divisa` de FONDCART."
+      - name: asset_description
+        description: "Campo `DescripcionValor` de FONDCART."
+      - name: asset_if_description
+        description: "Campo `DescripcionIF` de FONDCART."
+      - name: compartment_number
+        description: "Campo `NumeroCompartimento` de FONDCART."
+      - name: registration_number
+        description: "Campo `NumeroRegistro` de FONDCART."
+      - name: fund_type
+        description: "Campo `Tipo` de FONDCART."
       - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
         tests: [not_null]
       - name: position_value
         description: "Valor de mercado en euros. 38 posiciones <= 0 en los datos reales; se tratan en cartera."
         tests: [not_null]
       - name: isin
         description: "1.296 posiciones sin ISIN; el intrumento se identifica por ClaseIF + DescripcionIF."
-        tests:
-          - not_null:
-              config:
-                severity: warn
       - name: asset_if_class
         description: "INTERIOR / EXTERIOR / DUDOSAS"
         tests:
@@ -129,9 +327,13 @@ models:
           arguments:
             combination_of_columns: [series, value_date]
     columns:
+      - name: obs_status
+        description: "Estado de la observación del BCE (por ejemplo A = normal)."
       - name: series
+        description: "Identificador de la serie del BCE (índice compuesto del €STR)."
         tests: [not_null]
       - name: value_date
+        description: "Fecha del valor liquidativo."
         tests: [not_null]
       - name: series_value
         description: "Valor de la serie: nivel del índice para .CI, tasa para .CR. Puede ser negativo en .CR."

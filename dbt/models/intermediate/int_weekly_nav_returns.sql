@@ -4,7 +4,7 @@ with bounds as (
 
 daily as (
     select
-        cast(f.class_id as varchar) as class_key,
+        cl.class_key,
         d.date_day      as value_date,
         d.week_end_date,
         f.nav
@@ -12,6 +12,8 @@ daily as (
         {{ ref('fact_nav_daily') }} as f
     inner join {{ ref('dim_date') }} as d
         on f.date_key = d.date_key
+    inner join {{ ref('dim_class') }} as cl
+        on cl.class_id = f.class_id
     cross join bounds as b
     where
         not d.is_weekend
@@ -56,26 +58,15 @@ weekly_returns as (
         weekly_lagged as w
 ),
 
+-- Risk-free reference: weekly change of the compounded €STR index.
 benchmark_weekly as (
     select
-        w.week_end_date,
-        i.series_value / lag(i.series_value) over (order by w.week_end_date) - 1 as mar_w
+        d.date_day as week_end_date,
+        e.estr_index / lag(e.estr_index) over (order by d.date_day) - 1 as mar_w
     from
-        (
-            select distinct week_end_date
-            from
-                {{ ref('dim_date') }}
-        ) as w
-    asof join (
-        select
-            value_date,
-            series_value
-        from
-            {{ ref('stg_estr_daily') }}
-        where
-            series = 'EST.B.EU000A2QQF08.CI'
-    ) as i
-        on w.week_end_date >= i.value_date
+        {{ ref('fact_estr_weekly') }} as e
+    inner join {{ ref('dim_date') }} as d
+        on d.date_key = e.date_key
 )
 
 select
@@ -90,7 +81,7 @@ select
     b.mar_w,
     r.ret_w is null and r.prev_week_end_date is not null as is_gap,
     coalesce(r.ret_w = 0, false) as is_stale,
-    coalesce(abs(r.ret_w) > {{ var('extreme_return_abs', 0.50) }}, false) as is_extreme
+    coalesce(abs(r.ret_w) > {{ var('extreme_return_abs') }}, false) as is_extreme
 from
     weekly_returns as r
 left join benchmark_weekly as b

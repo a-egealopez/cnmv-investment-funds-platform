@@ -3,7 +3,49 @@ version: 2
 models:
   - name: int_nav_daily_classified
     description: "Clasificación de calidad de NAV diario. Grano: class_key x value_date. Material: abs(valor) > neg_dust_max. Dust: 0 < abs(valor) <= neg_dust_max."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, value_date]
     columns:
+      - name: is_dust_holders
+        description: "Partícipes negativos con valor absoluto <= neg_dust_max (residuo de redondeo)."
+      - name: is_dust_aum
+        description: "Patrimonio negativo con valor absoluto <= neg_dust_max (residuo de redondeo)."
+      - name: is_dust_nav
+        description: "NAV negativo con valor absoluto <= neg_dust_max (residuo de redondeo)."
+      - name: is_material_holders
+        description: "Partícipes negativos con valor absoluto > neg_dust_max."
+      - name: is_material_aum
+        description: "Patrimonio negativo con valor absoluto > neg_dust_max."
+      - name: is_material_nav
+        description: "NAV negativo con valor absoluto > neg_dust_max."
+      - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+      - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
+      - name: class_number
+        description: "Número de clase dentro del compartimento."
+      - name: compartment_number
+        description: "Número de compartimento dentro del fondo (0 si el fondo no tiene compartimentos)."
+      - name: registration_number
+        description: "Número de registro CNMV del fondo."
+      - name: fund_type
+        description: "Tipo de institución de inversión colectiva (por ejemplo FI o SICAV)."
+      - name: isin
+        description: "Código ISIN de la clase."
+      - name: holders
+        description: "Número de partícipes."
+      - name: aum
+        description: "Patrimonio en EUR."
+      - name: nav
+        description: "Valor liquidativo (VL) por participación."
+      - name: value_date
+        description: "Fecha del valor liquidativo."
+      - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
       - name: is_material
         description: "Anomalía material en NAV, AUM o partícipes; se envía a cuarentena."
         tests: [not_null]
@@ -29,6 +71,7 @@ models:
             combination_of_columns: [class_key, week_end_date]
     columns:
       - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: week_end_date
         description: "Domingo ISO que cierra la semana."
@@ -56,35 +99,7 @@ models:
       - name: is_extreme
         description: "Retorno semanal absoluto por encima de extreme_return_abs."
 
-  - name: int_daily_drawdown
-    description: >
-      Drawdown diario por clase sobre la serie diaria laborable con precio válido. Grano: class_key x value_date.
-      El pico acumulado se reinicia en el inicio de la ventana de análisis.
-      El drawdown se calcula sobre la serie diaria y no la semanal porque no hay convención regulatoria
-      que fije el horizonte y la semanal infraestimaría los mínimos intra-semana.
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [class_key, value_date]
-    columns:
-      - name: class_key
-        tests: [not_null]
-      - name: value_date
-        tests: [not_null]
-      - name: nav
-        description: "Valor liquidativo del día, siempre positivo."
-        tests: [not_null]
-      - name: running_peak
-        description: "Máximo acumulado del NAV desde el inicio de la ventana."
-        tests: [not_null]
-      - name: drawdown
-        description: "Caída respecto al pico acumulado: 1 - nav / running_peak."
-        tests:
-          - not_null:
-              config:
-                severity: warn
-
-  - name: int_class_metrics_36m
+  - name: int_class_metrics
     description: >
       Métricas de riesgo y rendimiento por clase sobre la ventana de 36 meses. Grano: class_key.
       Las métricas se calculan sobre la serie semanal de retornos no solapados con anualización ×52,
@@ -95,7 +110,14 @@ models:
           arguments:
             combination_of_columns: [class_key]
     columns:
+      - name: n_extreme
+        description: "Semanas con retorno semanal extremo (por encima de extreme_return_abs)."
+      - name: n_gap
+        description: "Semanas sin retorno por falta de la semana anterior consecutiva."
+      - name: n_stale
+        description: "Semanas con retorno cero (precio congelado)."
       - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: first_week
         description: "Primer domingo de la ventana con precio válido."
@@ -140,7 +162,12 @@ models:
                 config:
                   where: "sortino_status is not null"
       - name: max_drawdown
-        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable."
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable (el pico se reinicia al inicio de la ventana)."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
       - name: srri_like_class
         description: "Clase de riesgo tipo SRRI (1 a 7) según los cortes oficiales de volatilidad anualizada."
       - name: class_status
@@ -172,6 +199,7 @@ models:
             combination_of_columns: [compartment_key]
     columns:
       - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: class_key
         description: "Clase representante; nula si el compartimento no tiene ninguna candidata."
@@ -206,23 +234,28 @@ models:
       net_flows = (units_t - units_{t-1}) * nav_t, y delta_aum = aum_t - aum_{t-1}.
       Solo entran las filas con NAV y AUM positivos: units exige que ambas magnitudes tengan sentido.
       is_jump marca un salto de precio por encima de extreme_return_abs, que no es un flujo de dinero.
-      is_distribution marca un reparto de dividendo: el NAV y el AUM caen en la misma proporción
-      con los partícipes intactos. Sin esa marca, un reparto se leería como una salida de fondos.
+      Un reparto de dividendo no necesita marca: no cambia las participaciones, así que el flujo
+      es cero y la caída del NAV cae en el efecto mercado. Los repartos oficiales se identifican
+      con Beneficio_Dividendo_Bruto de FONDTRIM, no con una heurística sobre el NAV.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [class_key, value_date]
     columns:
       - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
         tests: [not_null]
       - name: value_date
+        description: "Fecha del valor liquidativo."
         tests: [not_null]
       - name: units
         description: "Participaciones derivadas: aum / nav. No es un dato oficial de CNMV."
         tests: [not_null]
       - name: aum
+        description: "Patrimonio en EUR."
         tests: [not_null]
       - name: nav
+        description: "Valor liquidativo (VL) por participación."
         tests: [not_null]
       - name: market_effect
         description: "Cambio de patrimonio atribuible al valor liquidativo."
@@ -235,8 +268,6 @@ models:
         tests: [not_null]
       - name: market_growth
         description: "market_effect / aum del día anterior."
-      - name: organic_growth
-        description: "net_flows / aum del día anterior."
       - name: total_growth
         description: "delta_aum / aum del día anterior."
       - name: is_jump
@@ -247,5 +278,92 @@ models:
           o incorporación de otra clase. El patrimonio aparece o desaparece sin que entre ni salga dinero.
           Un salto del patrimonio con el valor liquidativo estable NO es un cambio de capital:
           es dinero real entrando o saliendo.
-      - name: is_distribution
-        description: "Reparto de dividendo: NAV y AUM caen en la misma proporción con los partícipes intactos."
+
+
+  - name: int_fund_peer_ranking
+    description: >
+      Percentil y cuartil dentro de la vocación para todos los compartimentos invertibles
+      (clase representativa elegible con Sortino). Grano: compartment_key.
+      Incluye la selección de la watchlist (watchlist_rank): mejores fondos por pct_exact (el percentil
+      redondeado empata a 16 fondos en el percentil 1), con tope por vocación (max_per_vocacion), por
+      familia (watchlist_per_family) y global (watchlist_max). Lo lee mart_fund_panorama.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_key]
+    columns:
+      - name: star_rating
+        description: "Calificación de 1 a 5 por percentil dentro de la vocación; proxy propio, no es un rating oficial."
+      - name: quartile_in_vocation
+        description: "Cuartil dentro de la vocación (1 es el mejor); nulo si el grupo es pequeño."
+      - name: percentile_in_vocation
+        description: "Percentil redondeado dentro de la vocación (1 es el mejor, 100 el peor); nulo si hay menos de min_peer_group_size pares."
+      - name: n_peers
+        description: "Tamaño del grupo de pares: compartimentos de la misma vocación con Sortino."
+      - name: pct_exact
+        description: "Percentil continuo dentro de la vocación: 100 * (puesto - 1) / (n - 1); 0 es el mejor."
+      - name: cagr_3y
+        description: "Rentabilidad anualizada compuesta (CAGR) del NAV semanal en la ventana de análisis; fracción."
+      - name: sortino
+        description: "Ratio de Sortino anualizado de la clase frente al €STR semanal (mínimo aceptable)."
+      - name: aum
+        description: "Patrimonio en EUR."
+      - name: vocation_family
+        description: "Familia de vocación; agrupa las vocaciones."
+      - name: vocation
+        description: "Vocación inversora CNMV (normalizada con el seed vocation_aliases)."
+      - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+      - name: watchlist_rank
+        description: "Posición global en la watchlist (1 es el mejor); nulo si el compartimento no está seleccionado."
+
+  - name: int_active_class_as_of
+    description: >
+      Clases activas en la fecha de corte: AUM y partícipes positivos el último día
+      con datos del periodo. Grano: class_id.
+      Fuente única para int_representative_class, mart_fund_panorama y mart_fund_class_status.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_id]
+    columns:
+      - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
+        tests: [not_null]
+      - name: class_key
+        description: "Clave natural de la clase (tipo|registro|compartimento|clase); solo trazabilidad, ocultar en Power BI."
+        tests: [not_null]
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests: [not_null]
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+        tests: [not_null]
+      - name: aum
+        description: "Patrimonio en EUR."
+        tests: [not_null]
+      - name: participants
+        description: "Número de partícipes."
+        tests: [not_null]
+
+  - name: int_active_compartment_as_of
+    description: >
+      Compartimentos activos en la fecha de corte: suma de AUM y partícipes de sus
+      clases activas. Grano: compartment_id.
+      Fuente única para mart_fund_panorama y la selección de la watchlist.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id]
+    columns:
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests: [not_null]
+      - name: aum
+        description: "Patrimonio en EUR."
+        tests: [not_null]
+      - name: participants
+        description: "Número de partícipes."
+        tests: [not_null]

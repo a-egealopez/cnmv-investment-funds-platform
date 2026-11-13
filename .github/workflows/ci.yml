@@ -82,9 +82,12 @@ jobs:
       - name: dbt deps
         run: dbt deps --project-dir dbt --profiles-dir dbt
 
+      # The fixture has less than 36 months of history, so its panorama is empty
+      # by design; that test is meant for the real data.
       - name: dbt build
         run: >-
           dbt build --project-dir dbt --profiles-dir dbt --target ci
+          --exclude assert_panorama_not_empty
           --vars '{as_of_period: "202605", silver_root: "tests/fixtures/silver"}'
 
   secrets:

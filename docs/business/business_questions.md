@@ -32,7 +32,7 @@ Universe: 1,438 entities / 3,116 classes / 1,668 compartments (FONTRIM 202512); 
 
 **Metrics**: weekly returns, 36-month volatility (SRRI-like class), Sortino (weekly €STR MAR), percentile/quartile within vocation (1 = best, ≥ 5 peers), 36m CAGR, 1y return, max drawdown
 
-**Output**: `mart_fund_watchlist` — ranked candidates with vocation, family, position and full provenance
+**Output**: `mart_fund_panorama` filtered by `watchlist_status = 'selected'` — ranked candidates with vocation, family, position and full provenance
 
 ### Portfolio (already supported by Silver; dbt marts pending)
 
@@ -44,7 +44,7 @@ Universe: 1,438 entities / 3,116 classes / 1,668 compartments (FONTRIM 202512); 
 
 **Metrics**: HHI, effective N, top-10 weight, coverage ratio (weights over reported positions)
 
-**Output**: `mart_fund_concentration` ranking + `mart_fund_top_holdings`
+**Output**: `mart_fund_panorama` (concentration columns) + the top ten from `fact_holdings` (`position_rank <= 10`)
 
 #### 4. Portfolio Composition
 
@@ -54,7 +54,7 @@ Universe: 1,438 entities / 3,116 classes / 1,668 compartments (FONTRIM 202512); 
 
 **Metrics**: weights by `ClaseIF` as reported, top-10 positions
 
-**Output**: `mart_fund_allocation` breakdown chart
+**Output**: asset-class breakdown chart (sum of `fact_holdings.weight` by `clase_if` / `descripcion_if`)
 
 #### 5. Peer Comparison
 
@@ -86,11 +86,11 @@ Universe: 1,438 entities / 3,116 classes / 1,668 compartments (FONTRIM 202512); 
 
 **Data needed**: FONDPATRIMDISVAR (management, depositary, other expenses, income), FONDTRIM (fee rate cross-check)
 
-**Metrics**: `core_fee_yield`, `other_expense_yield`, `expense_ratio`, `income_yield`, `net_return_yield`, `core_fee_share`, `fee_revenue_proxy`, `hhi_fee`, `top5_fee_share`
+**Metrics**: `core_fee_yield_rate`, `other_expense_yield_rate`, `charged_expense_yield_rate`, `income_yield_rate`, `net_return_rate` (cumulative for the year) and their `*_annualized_rate` versions, `core_fee_share`, `fee_revenue_proxy` / `fee_revenue_proxy_annualized`, and by manager group `management_fee_revenue_annualized`, `management_fee_yield_annualized_rate`, `net_flow_yield` / `market_growth`, `hhi_fee`, `top5_fee_share`
 
-**Output**: `mart_fund_flow_revenue` and fee block in the executive summary
+**Output**: `fact_fund_period_financials` (fee block), `fact_manager_group_monthly` and `fact_market_fee_and_aum` (concentration)
 
-**Limitations**: no success fee; `fee_revenue_proxy` is annual and not accounting revenue.
+**Limitations**: no success fee; `fee_revenue_proxy` is cumulative for the year (June covers half a year, December a full year; use the annualized columns to compare) and is not accounting revenue. Manager revenue uses the management fee only, gross of retrocessions to distributors and without costs, so it supports market mapping and screening, not valuation.
 
 #### 8. Data Quality and Forensic Signals
 
@@ -100,7 +100,7 @@ Universe: 1,438 entities / 3,116 classes / 1,668 compartments (FONTRIM 202512); 
 
 **Metrics**: `recon_error`, coverage, gap/stale shares, `fee_period_status`, `dq_status`, anomaly type and severity
 
-**Output**: `mart_data_quality_scorecard`, `mart_fund_anomalies`, Power BI "Anomaly / Forensic Breakdown"
+**Output**: `mart_data_quality_scorecard`, `fact_fund_anomalies`, Power BI "Anomaly / Forensic Breakdown"
 
 ### Phase 2 (future)
 

@@ -13,3 +13,4 @@ Garantizado de Rendimiento Fijo,Garantizados,false,Estructura que garantiza la p
 Garantizado de Rendimiento Variable,Garantizados,false,Estructura que garantiza el capital y liga su rendimiento a la evolución de un subyacente.
 De Garantía Parcial,Garantizados,false,Fondos con garantía limitada que protegen únicamente un porcentaje del capital invertido.
 IIC de Gestión Pasiva,Gestión Pasiva,false,Vehículos orientados a replicar o tomar como referencia el comportamiento de un índice.
+Sin vocación,Sin vocación,false,Compartimento sin vocación informada en FONDTRIM; miembro desconocido de la dimensión.

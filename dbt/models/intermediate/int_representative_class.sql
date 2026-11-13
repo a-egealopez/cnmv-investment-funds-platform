@@ -1,57 +1,33 @@
-with as_of as (
-    select max(value_date) as max_date
-    from
-        {{ ref('stg_fund_nav_daily') }}
-    where
-        period = '{{ var("as_of_period") }}'
-),
-
-active_classes as (
-    -- Active class: row on the last date of the period with positive AUM and holders.
-    select
-        s.class_key,
-        s.compartment_key,
-        s.aum,
-        s.holders as participants
-    from
-        {{ ref('stg_fund_nav_daily') }} as s
-    inner join as_of as a
-        on s.value_date = a.max_date
-    where
-        s.period = '{{ var("as_of_period") }}'
-        and s.aum > 0
-        and s.holders > 0
-),
-
-first_seen as (
+with first_seen as (
     select
         class_key,
         min(value_date) as first_date
     from
         {{ ref('stg_fund_nav_daily') }}
+    where
+        period <= {{ current_as_of_period() }}
     group by
         class_key
 ),
 
 candidates as (
-    -- Candidates: classes with complete metrics in the watchlist currency.
     select
-        m.class_key,
+        d.class_key,
         d.compartment_key,
         a.participants,
         a.aum,
         f.first_date
     from
-        {{ ref('int_class_metrics_36m') }} as m
+        {{ ref('int_class_metrics') }} as m
     inner join {{ ref('dim_class') }} as d
         on d.class_key = m.class_key
-    inner join active_classes as a
-        on a.class_key = m.class_key
+    inner join {{ ref('int_active_class_as_of') }} as a
+        on a.class_key = d.class_key
     inner join first_seen as f
-        on f.class_key = m.class_key
+        on f.class_key = d.class_key
     where
         m.class_status = 'eligible'
-        and d.class_currency_code = '{{ var("watchlist_currency", "EUR") }}'
+        and d.class_currency_code = '{{ var('watchlist_currency') }}'
 ),
 
 ranked as (

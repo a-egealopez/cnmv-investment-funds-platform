@@ -1,0 +1,182 @@
+version: 2
+
+models:
+  - name: mart_fund_panorama
+    description: >
+      Vista de decisión de la plataforma: una fila por compartimento, a través de su clase
+      representativa. Grano: compartment_key.
+      La unidad de decisión es el compartimento y la de medición la clase de participación, así que
+      el panorama solo incluye compartimentos con clase representativa. Incluir todas las clases
+      activas duplicaría la cartera del compartimento en cada una de sus clases y haría que sumar
+      el patrimonio de las filas contara de más.
+      La cartera, los flujos y las fees son de compartimento; el riesgo y el retorno, de clase.
+      Las anomalías llegan como recuento: el detalle está en fact_fund_anomalies.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id]
+    columns:
+      - name: holdings_date_key
+        description: "Último día del mes de la última cartera informada; clave hacia dim_date (rol: cartera)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: fees_date_key
+        description: "Último día del mes del último cierre con comisiones; clave hacia dim_date (rol: comisiones)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: class_id
+        description: "Clase representante del compartimento."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: ret_1y
+        description: "Retorno de las últimas 52 semanas."
+      - name: cagr_3y
+        description: "CAGR de la ventana de 36 meses."
+      - name: vol
+        description: "Volatilidad anualizada sobre retornos semanales."
+      - name: srri_like_class
+        description: "Clase de riesgo tipo SRRI, de 1 a 7."
+      - name: sortino
+        description: "Sortino de la clase representativa."
+      - name: sortino_status
+        description: "ok, no_downside o stagnant."
+      - name: max_drawdown
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable."
+      - name: coverage_ratio
+        description: "Cobertura de semanas con precio válido sobre las teóricas de la ventana."
+      - name: stale_share
+        description: "Proporción de semanas con retorno cero."
+      - name: gap_share
+        description: "Proporción de semanas sin semana anterior consecutiva."
+      - name: aum
+        description: "Patrimonio del compartimento en la fecha de corte."
+      - name: participants
+        description: "Partícipes del compartimento en la fecha de corte."
+      - name: meets_size_floor
+        description: "Cumple min_aum_compartment y min_participants_compartment. Flag informativo; no filtra el panorama."
+        tests: [not_null]
+      - name: watchlist_status
+        description: "selected o not_selected. El panorama solo contiene compartimentos con clase representativa."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['selected', 'not_selected']
+      - name: rnk
+        description: "Posición del fondo en la watchlist; nulo si no está seleccionado."
+      - name: peer_percentile
+        description: "Percentil dentro de la vocación para todos los fondos con peer group >= min_peer_group_size, estén o no en la watchlist."
+      - name: peer_quartile
+        description: "Cuartil dentro de la vocación (1 es el mejor); nulo si el peer group es pequeño."
+      - name: n_peers
+        description: "Tamaño del peer group de la vocación."      
+      - name: n_positions
+        description: "Instrumentos con valor positivo en la cartera."
+      - name: hhi
+        description: "Concentración de la cartera: suma de los cuadrados de los pesos."
+      - name: effective_n
+        description: "Número de posiciones con el mismo peso que el reparto observado."
+      - name: top10_weight
+        description: "Peso de las diez mayores posiciones."
+      - name: holdings_coverage_ratio
+        description: "Cartera reportada sobre el patrimonio del compartimento."
+      - name: holdings_incomplete
+        description: "La cobertura de la cartera queda fuera de la banda admisible."
+      - name: net_flow_yield
+        description: "Flujo neto del último mes sobre el patrimonio medio."
+      - name: market_growth
+        description: "Efecto mercado del último mes."
+      - name: is_flow_outlier
+        description: "El último flujo supera max_abs_flow_yield. Flag para filtrar escalas."
+        tests: [not_null]
+      - name: core_fee_share
+        description: "Proporción de los gastos que son gestión y depositaria."
+      - name: charged_expense_yield_ytd_rate
+        description: "Gastos totales acumulados del ejercicio, como fracción (0.01 = 1%)."
+      - name: fee_revenue_proxy_ytd
+        description: "Ingresos por fee aproximados; no es ingreso contable y acumula el ejercicio."
+      - name: is_fee_outlier
+        description: "El charged_expense_yield_ytd_rate supera max_fee_yield. Flag para filtrar escalas."
+        tests: [not_null]
+      - name: n_anomalies
+        description: "Anomalías detectadas en el compartimento."
+      - name: n_anomalies_high
+        description: "Anomalías de severidad high, que exigen revisión manual."
+      - name: star_rating
+        description: "Estrellas 1-5 dentro de la vocación (cortes Morningstar 10/22,5/35/22,5/10 %); nulo si el peer group es pequeño."
+
+  - name: mart_fund_class_status
+    description: >
+      Estado/foto de cobertura por clase en la fecha de corte (opción A: separado de dim_class).
+      Grano: class_id. Explica por qué una clase no aparece en mart_fund_panorama:
+      sin NAV reciente, otra divisa, historia corta, cuarentena, no representativa o fallo de join.
+      Medidas de foto (aum/participants de clase) no se incluyen; obtenerlas de fact_nav_daily en el corte.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_id]
+    columns:
+      - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: is_active
+        description: "Tiene NAV en la fecha de corte con AUM > 0 y partícipes > 0."
+        tests: [not_null]
+      - name: is_representative
+        description: "Clase elegida como representativa de su compartimento."
+        tests: [not_null]
+      - name: is_in_panorama
+        description: "La clase aparece en mart_fund_panorama."
+        tests: [not_null]
+      - name: metrics_status
+        description: "class_status técnico de int_class_metrics: eligible, short_history o quarantined."
+      - name: metrics_status_reason
+        description: "Motivo técnico de cuarentena o historia corta."
+      - name: status
+        description: "Estado de negocio de la clase; prioriza la causa que la excluye del panorama."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'in_panorama'
+                  - 'not_representative'
+                  - 'no_recent_nav'
+                  - 'other_currency'
+                  - 'short_history'
+                  - 'quarantined'
+                  - 'representative_not_in_panorama'
+      - name: status_reason
+        description: "Explicación legible del estado."

@@ -6,15 +6,16 @@ with bounds as (
 -- magnitudes to make sense; a non-positive value would produce fictitious flows.
 valid_daily as (
     select
-        cast(f.class_id as varchar) as class_key,
+        cl.class_key,
         d.date_day as value_date,
         f.nav,
-        f.aum,
-        f.holders
+        f.aum
     from
         {{ ref('fact_nav_daily') }} as f
     inner join {{ ref('dim_date') }} as d
         on d.date_key = f.date_key
+    inner join {{ ref('dim_class') }} as cl
+        on cl.class_id = f.class_id
     cross join bounds as b
     where
         f.nav > 0
@@ -26,8 +27,7 @@ daily_lagged as (
     select
         v.*,
         lag(v.nav)     over by_class as prev_nav,
-        lag(v.aum)     over by_class as prev_aum,
-        lag(v.holders) over by_class as prev_holders
+        lag(v.aum)     over by_class as prev_aum
     from
         valid_daily as v
     window by_class as (partition by class_key order by value_date)
@@ -61,33 +61,20 @@ bridged as (
 
         (u.aum - u.prev_aum) / u.prev_aum                as total_growth,
         (u.prev_units * (u.nav - u.prev_nav)) / u.prev_aum as market_growth,
-        ((u.units - u.prev_units) * u.nav) / u.prev_aum  as organic_growth,
 
         -- Price jump: NAV move above the extreme-return threshold. It is not a
         -- cash flow but a change of identity or a decapitalization.
-        abs(u.nav / u.prev_nav - 1) > {{ var('extreme_return_abs', 0.50) }}
+        abs(u.nav / u.prev_nav - 1) > {{ var('extreme_return_abs') }}
             as is_jump,
 
         -- Capital and price jump together: AUM and NAV change at once (merger,
         -- class change or new share class). AUM appears or disappears without
         -- money entering or leaving. An AUM jump with stable NAV is a real flow.
         (
-            (u.aum / u.prev_aum > 2 or u.aum / u.prev_aum < 0.5)
-            and abs(u.nav / u.prev_nav - 1) > 0.01
-        ) as is_capital_change,
-
-        -- Dividend distribution: NAV and AUM fall in the same proportion while
-        -- units stay unchanged. This is not an outflow. The 3% drop threshold
-        -- avoids daily noise: 2,871 events vs. 45,609 at 1% and 127,234 at 0.5%.
-        case
-            when u.nav / u.prev_nav <= 1 - {{ var('min_distribution_drop', 0.03) }}
-                 and u.prev_holders is not null
-                 and u.prev_holders > 0
-                 and u.holders = u.prev_holders
-                 and abs(u.aum / u.prev_aum - u.nav / u.prev_nav) < 0.005
-                then true
-            else false
-        end as is_distribution
+            (u.aum / u.prev_aum > {{ var('capital_change_aum_ratio') }}
+             or u.aum / u.prev_aum < 1.0 / {{ var('capital_change_aum_ratio') }})
+            and abs(u.nav / u.prev_nav - 1) > {{ var('capital_change_nav_move') }}
+        ) as is_capital_change
 
     from
         with_units as u
@@ -103,10 +90,8 @@ select
     net_flows,
     delta_aum,
     market_growth,
-    organic_growth,
     total_growth,
     is_jump,
-    is_capital_change,
-    is_distribution
+    is_capital_change
 from
     bridged

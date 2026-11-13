@@ -10,9 +10,37 @@ models:
               - class_id
               - value_date
     columns:
+      - name: is_dust
+        description: "Residuo de redondeo: algún valor negativo con valor absoluto <= neg_dust_max. Se conserva con la marca."
+      - name: is_material
+        description: "Algún valor negativo con valor absoluto > neg_dust_max; la fila va a cuarentena."
+      - name: holders
+        description: "Número de partícipes."
+      - name: aum
+        description: "Patrimonio en EUR."
+      - name: nav
+        description: "Valor liquidativo (VL) por participación."
+      - name: class_number
+        description: "Número de clase dentro del compartimento."
+      - name: compartment_number
+        description: "Número de compartimento dentro del fondo (0 si el fondo no tiene compartimentos)."
+      - name: registration_number
+        description: "Número de registro CNMV del fondo."
+      - name: fund_type
+        description: "Tipo de institución de inversión colectiva (por ejemplo FI o SICAV)."
+      - name: isin
+        description: "Código ISIN de la clase."
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+      - name: fund_key
+        description: "Clave natural del fondo (tipo|registro); solo trazabilidad, ocultar en Power BI."
+      - name: period
+        description: "Periodo del fichero de origen (YYYYMM); trazabilidad."
       - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
         tests: [not_null]
       - name: value_date
+        description: "Fecha del valor liquidativo."
         tests: [not_null]
       - name: quarantine_reason
         description: "Motivos concatenados que justifican la cuarentena."

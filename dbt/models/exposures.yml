@@ -1,0 +1,31 @@
+version: 2
+
+exposures:
+  - name: panel_fondos_power_bi
+    label: Panel de fondos (Power BI)
+    type: dashboard
+    maturity: low
+    description: >
+      Panel de cinco páginas: Panorama, Detalle del fondo, Cartera, Mercado (flujos, comisiones
+      y gestoras) y Anomalías y calidad. Importa los ficheros Parquet que genera
+      `bi/export_gold.py` a partir de estos modelos.
+    owner:
+      name: Equipo de análisis de datos
+    depends_on:
+      - ref('dim_date')
+      - ref('dim_class')
+      - ref('dim_compartment')
+      - ref('dim_manager_group')
+      - ref('fact_nav_daily')
+      - ref('fact_class_nav_weekly')
+      - ref('fact_estr_weekly')
+      - ref('fact_fund_quarterly_metrics')
+      - ref('fact_holdings')
+      - ref('fact_fund_period_financials')
+      - ref('fact_compartment_monthly')
+      - ref('fact_manager_group_monthly')
+      - ref('fact_market_fee_and_aum')
+      - ref('fact_fund_anomalies')
+      - ref('mart_fund_panorama')
+      - ref('mart_fund_class_status')
+      - ref('meta_run')

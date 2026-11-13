@@ -4,6 +4,12 @@ config-version: 2
 profile: cnmv
 
 vars:
+  silver_root: "../data/silver"
+
+  # as_of_period (not set here on purpose): cut-off of the run, 'latest' by default
+  # (last period in Silver) or an explicit YYYYMM, e.g. --vars '{as_of_period: "202604"}'.
+  # Only models/meta/meta_run.sql reads it; the rest of the project reads meta_run.
+
   # Analysis and exclusion of signed values.
   neg_dust_max: 1
     # Negative amount that separates material anomaly from rounding dust.
@@ -36,9 +42,6 @@ vars:
   min_participants_compartment: 20
     # Minimum participants of the compartment.
     # Origin: project decision. Base: IIC Regulation exempts investment vehicles.
-  min_participants_entity: 100
-    # Minimum participants of the entity summing its classes.
-    # Origin: project decision. Base: upper limit, one participant in two classes counts twice.
   watchlist_currency: EUR
     # Currency of the class required to enter the watchlist.
     # Origin: notebook 02, §2. Base: entity level has 411 nulls, class level none.
@@ -47,7 +50,7 @@ vars:
   min_peer_group_size: 5
     # Number of funds of the same vocation needed to calculate a percentile.
     # Origin: Morningstar. Base: no valuation published with less than five.
-  watchlist_per_family: 5
+  watchlist_per_family: 8
     # Maximum funds selected per vocation family.
     # Origin: project decision. Base: concentration limits of the selection.
   max_per_vocacion: 2
@@ -65,6 +68,11 @@ vars:
     # Maximum reported portfolio coverage over heritage.
     # Origin: notebook 02, §5. Base: 5 compartments above and maximum of 6.98.
 
+  # Risk-free reference.
+  estr_series: "EST.B.EU000A2QQF08.CI"
+    # ECB series: compounded €STR index (used as the minimum acceptable return of the Sortino).
+    # Origin: ECB Data Portal. Base: the compounded index lets weekly returns be computed from levels.
+
   # Flows, commissions and data quality.
   min_downside_dev: 0.001
     # Floor of the annualized downward deviation.
@@ -72,22 +80,23 @@ vars:
   max_outflow_yield: -0.10
     # Maximum heritage decline due to net outflows.
     # Origin: uncalibrated proposal. Base: pending measurement on the flows series.
-  min_flow_periods: 2
-    # Periods with flow required before considering the metric valid.
-    # Origin: project decision. Base: avoids reading a single period as a trend.
   max_fee_yield: 0.05
-    # Maximum expense yield over heritage.
+    # Maximum expense yield over heritage, as a fraction (0.05 = 5%).
+    # Used to flag fee outliers in the monthly mart; it does not remove rows.
     # Origin: uncalibrated proposal. Base: pending measurement on the commissions series.
+  max_abs_flow_yield: 0.50
+    # Absolute net flow yield from which a month is flagged as an outlier.
+    # Flag only (is_flow_outlier); it does not remove rows or change selection.
+    # Origin: audit of the current Gold layer. Base: 990 months above 0.5, mostly tiny compartments.
+  capital_change_aum_ratio: 2
+    # AUM change factor (x2 or /2) that, together with a NAV move, marks a capital change.
+    # Origin: project decision. Base: merges and new classes move AUM by multiples at once.
+  capital_change_nav_move: 0.01
+    # Minimum absolute daily NAV move that confirms a capital change (not a pure flow).
+    # Origin: project decision. Base: a pure AUM jump with stable NAV is a real flow.
   max_recon_error: 0.01
     # Maximum reconciliation error between FONDMENS and FONDTRIM.
     # Origin: uncalibrated proposal. Base: pending measurement on common closings.
-  min_distribution_drop: 0.03
-    # Minimum liquidation value drop for a dividend distribution to be distinguished from daily noise.
-    # Origin: calibration of this session. Base: 2,871 distributions at 3%, 45,609 at 1% and 127,234 at 0.5%.
-  max_hhi_asset_type: null
-    # Maximum concentration by asset type.
-    # Origin: pending. Base: depends on portfolio model, which does not exist yet.
-
 model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
@@ -103,7 +112,11 @@ models:
       +materialized: table
     quality:
       +materialized: table
-    gold:
+    meta:
       +materialized: table
-    marts:
-      +materialized: view
+    dimensions:
+      +materialized: table
+    facts:
+      +materialized: table
+    reports:
+      +materialized: table

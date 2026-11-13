@@ -1,0 +1,562 @@
+version: 2
+
+models:
+  - name: fact_nav_daily
+    description: "Hecho diario de NAV. Grano: 1 clase x 1 día. Excluye filas con anomalía material (abs(valor) > neg_dust_max). La cuarentena es a nivel de fila."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - class_id
+              - date_key
+    columns:
+      - name: is_usable
+        description: "Fila utilizable: NAV y patrimonio positivos, sin NAV cero (clase durmiente) ni residuos."
+      - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: date_key
+        description: "Clave de fecha (YYYYMMDD); relaciona con dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: nav
+        description: "Valor liquidativo (VL) por participación."
+        tests: [not_null]
+      - name: aum
+        description: "Patrimonio en EUR."
+        tests: [not_null]
+      - name: holders
+        description: "Partícipes de la clase. Nulo cuando la fuente informa 0 con patrimonio > 0 (artefacto de reporte, no ausencia real de partícipes)."
+      - name: is_valid_nav
+        description: "NAV > 0 y AUM > 0. Filtro recomendado para gráficos; is_dormant conserva el padding para trazabilidad."
+        tests: [not_null]
+      - name: is_dormant
+        description: "NAV = 0: padding o clase durmiente; no prueba por sí solo que la clase esté inactiva."
+      - name: is_dust
+        description: "Residuo de redondeo en NAV, AUM o partícipes (0 < abs(valor) <= neg_dust_max); se conserva en el hecho."
+
+  - name: fact_fund_period_financials
+    description: >
+      FONDPATRIMDISVAR: distribución del patrimonio en EUR, gastos e ingresos como fracción (0.01 = 1%)
+      con el signo del XML, flujo neto, retorno, rotación y
+      patrimonios por compartimento y periodo. Grano: compartment_key x period.
+      Conserva todas las filas de staging; las incidencias se señalizan en tests
+      y en la capa de calidad, no se descartan.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - compartment_id
+              - date_key
+    columns:
+      - name: other_revenues_rate
+        description: "Otros ingresos, fracción acumulada del ejercicio."
+      - name: retroceded_commissions_rate
+        description: "Comisiones retrocedidas, fracción acumulada del ejercicio."
+      - name: discount_commissions_rate
+        description: "Comisiones de descuento a favor del fondo, fracción acumulada del ejercicio."
+      - name: income_rate
+        description: "Ingresos totales con el signo del XML, fracción acumulada del ejercicio."
+      - name: other_charged_expenses_rate
+        description: "Otros gastos repercutidos con el signo del XML, fracción acumulada del ejercicio."
+      - name: other_management_expenses_rate
+        description: "Otros gastos de gestión con el signo del XML, fracción acumulada del ejercicio."
+      - name: external_services_expenses_rate
+        description: "Gastos de servicios exteriores con el signo del XML, fracción acumulada del ejercicio."
+      - name: depositary_fee_rate
+        description: "Comisión de depositaría con el signo del XML, fracción acumulada del ejercicio."
+      - name: management_fee_rate
+        description: "Comisión de gestión con el signo del XML, fracción acumulada del ejercicio."
+      - name: charged_expenses_rate
+        description: "Gastos repercutidos totales de FONDPATRIMDISVAR con el signo del XML (negativo), fracción acumulada del ejercicio. Para analizar usa charged_expense_yield_rate."
+      - name: other_returns_rate
+        description: "Otros rendimientos, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: other_results_rate
+        description: "Otros resultados, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: iic_results_rate
+        description: "Resultados de inversiones en otras IIC, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: derivatives_results_rate
+        description: "Resultados de derivados, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: deposit_results_rate
+        description: "Resultados de depósitos, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: equity_results_rate
+        description: "Resultados de renta variable, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: fixed_income_results_rate
+        description: "Resultados de renta fija, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: dividend_income_rate
+        description: "Dividendos cobrados, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: interest_income_rate
+        description: "Intereses cobrados, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: management_return_rate
+        description: "Rendimientos de gestión, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: net_return_rate
+        description: "Rendimientos netos de FONDPATRIMDISVAR, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: gross_distributed_profit_rate
+        description: "Beneficios brutos distribuidos, fracción del patrimonio medio acumulada en el ejercicio."
+      - name: net_subscriptions_redemptions_rate
+        description: "Suscripciones menos reembolsos netos oficiales, fracción acumulada del ejercicio."
+      - name: patrimony_current_period
+        description: "Patrimonio al cierre del periodo actual (EUR)."
+      - name: patrimony_previous_period
+        description: "Patrimonio al cierre del periodo anterior (EUR)."
+      - name: portfolio_turnover_previous
+        description: "Índice de rotación de la cartera del periodo anterior."
+      - name: portfolio_turnover_current
+        description: "Índice de rotación de la cartera del periodo actual."
+      - name: date_key
+        description: "Último día del mes de cierre (junio o diciembre); clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: compartment_id
+        description: "fund_type|registration_number|compartment_number"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: total_patrimony
+        description: "Patrimonio de cierre en EUR. Hay 1 nulo y 1 valor cero en los datos reales; no se descartan."
+      - name: core_fee_yield_rate
+        description: "abs(ComisionGestion + ComisionDepositario), como fracción (0.01 = 1%)."
+      - name: other_expense_yield_rate
+        description: "abs(GastosServiciosExteriores + OtrosGastosGestion + OtrosGastosRepercutidos), como fracción (0.01 = 1%)."
+      - name: charged_expense_yield_rate
+        description: "abs(GastosRepercutidos), como fracción (0.01 = 1%)."
+      - name: income_yield_rate
+        description: "abs(Ingresos), como fracción (0.01 = 1%)."
+      - name: core_fee_share
+        description: "core_fee_yield_rate / charged_expense_yield_rate. Nulo si el gasto total es cero (51 filas) o la fila es nula (1)."
+      - name: fee_revenue_proxy
+        description: "average_patrimony * core_fee_yield_rate. Magnitud positiva para concentración; no es ingreso contable. Es acumulado del ejercicio: junio cubre medio año y diciembre un año; para comparar cierres distintos usa fee_revenue_proxy_annualized."
+      - name: period_months
+        description: "Meses que cubre el acumulado del ejercicio: 6 (junio) o 12 (diciembre)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [6, 12]
+      - name: average_patrimony
+        description: "Media del patrimonio de inicio y cierre del periodo; el de cierre si falta el de inicio. Base del fee_revenue_proxy."
+      - name: core_fee_yield_annualized_rate
+        description: "core_fee_yield_rate x 12 / period_months."
+      - name: other_expense_yield_annualized_rate
+        description: "other_expense_yield_rate x 12 / period_months."
+      - name: charged_expense_yield_annualized_rate
+        description: "charged_expense_yield_rate x 12 / period_months. No es el TER oficial (fact_fund_quarterly_metrics.total_expense_ratio_rate)."
+      - name: income_yield_annualized_rate
+        description: "income_yield_rate x 12 / period_months."
+      - name: fee_revenue_proxy_annualized
+        description: "fee_revenue_proxy x 12 / period_months; comparable entre junio y diciembre."
+      - name: is_fee_outlier
+        description: "Gastos repercutidos por encima de max_fee_yield. Flag para filtrar escalas; no elimina filas."
+        tests: [not_null]
+      - name: management_fee_yield_rate
+        description: "abs(ComisionGestion): lo que cobra la gestora, como fracción acumulada del ejercicio. Excluye la comisión de depositaría."
+      - name: management_fee_yield_annualized_rate
+        description: "management_fee_yield_rate x 12 / period_months."
+      - name: management_fee_revenue
+        description: "average_patrimony * management_fee_yield_rate. Ingreso estimado de la gestora acumulado del ejercicio; proxy bruto de retrocesiones, sin costes."
+      - name: management_fee_revenue_annualized
+        description: "management_fee_revenue x 12 / period_months; comparable entre junio y diciembre."
+
+  - name: fact_fund_quarterly_metrics
+    description: >
+      Métricas trimestrales oficiales de FONDTRIM por clase. Grano: class_id x date_key (fin de trimestre).
+      FONDTRIM publica el trimestre actual y los tres anteriores en cada fichero semestral (06 y 12),
+      así que cada trimestre aparece en dos ficheros. Se deduplica con prioridad current > t1 > t2 > t3.
+      date_key es el fin de trimestre (31/03, 30/06, 30/09, 31/12).
+      Los trimestres de 2022 quedan fuera del calendario de dim_date.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_id, date_key]
+    columns:
+      - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: date_key
+        description: "Clave de fecha del fin de trimestre en dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: return_rate
+        description: "Rentabilidad oficial del trimestre, como fracción (0.01 = 1%). Verificada contra el NAV: sobre 12.715 observaciones de 1.459 clases, la diferencia mediana con la calculada desde el NAV es 0,003 puntos porcentuales."
+      - name: volatility_rate
+        description: "Volatilidad oficial del trimestre, como fracción (0.01 = 1%): desviación típica de los retornos diarios del NAV anualizada con raíz de 260 (el cociente con la calculada así desde el NAV tiene mediana 1,001). No es comparable 1:1 con la volatilidad semanal a 36 meses de int_class_metrics, que usa otra frecuencia y otra ventana."
+      - name: total_expense_ratio_rate
+        description: "Ratio total de gastos oficial del trimestre, como fracción (0.01 = 1%)."
+
+  - name: fact_holdings
+    description: >
+      Posiciones de cartera agregadas por instrumento. Grano: compartment_id x date_key x instrument_key.
+      Se conservan todos los periodos <= as_of_period (FONDCART es semestral), lo que permite
+      comparar la composición de la cartera en el tiempo. El panorama usa el último por compartimento.
+      Las líneas del mismo instrumento se agregan: hay 1.462 instrumentos con líneas repetidas y sin
+      agregarlas el HHI se subestima.
+      El precio de referencia del patrimonio es el de la MISMA fecha que la cartera, no el del as_of_date:
+      la cartera es semestral y el patrimonio diario, y comparar instantes distintos dispara los casos
+      fuera de banda de 57 a 375.
+      instrument_key usa el ISIN cuando es real; XXXXXXXXXXXX es un sentinel de CNMV que representa 22
+      instrumentos distintos, así que cae al identificador por clase y descripción.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, date_key, instrument_key]
+    columns:
+      - name: date_key
+        description: "Último día del mes del periodo de cartera; clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: instrument_key
+        description: "Identificador del instrumento: ISIN real, o clase, descripción y detalle si no lo hay."
+        tests: [not_null]
+      - name: isin
+        description: "ISIN del instrumento; XXXXXXXXXXXX es un sentinel de CNMV, no un ISIN real."
+      - name: clase_if
+        description: "Clase del activo en la cartera: EXTERIOR, INTERIOR o DUDOSAS."
+      - name: descripcion_if
+        description: "Categoría del activo en la cartera."
+      - name: asset_description
+        description: "Descripción detallada de la posición en la cartera."
+      - name: position_value
+        description: "Valor de mercado en euros, sumando las líneas del mismo instrumento."
+        tests: [not_null]
+      - name: n_lines
+        description: "Líneas de la fuente agregadas en este instrumento."
+        tests: [not_null]
+      - name: weight
+        description: "Peso del instrumento sobre las posiciones con valor positivo; nulo si el valor no es positivo."
+      - name: n_positions
+        description: "Instrumentos con valor positivo en el compartimento."
+        tests: [not_null]
+      - name: n_nonpositive
+        description: "Posiciones con valor no positivo del compartimento; se conservan marcadas y no computan peso."
+        tests: [not_null]
+      - name: coverage_ratio
+        description: "Suma de las posiciones con valor positivo sobre el patrimonio del compartimento en la fecha de la cartera."
+      - name: is_negative
+        description: "La posición tiene valor no positivo; se conserva para trazabilidad pero no computa peso."
+      - name: position_rank
+        description: "Posición por peso dentro del compartimento y el periodo (1 = mayor). Nulo si la posición no tiene peso. Las diez mayores son position_rank <= 10; la asignación por categoría se obtiene sumando weight por clase_if y descripcion_if."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+
+  - name: fact_estr_weekly
+    description: >
+      Índice compuesto del €STR (serie .CI) en frecuencia semanal, rebasado a 100 en la primera
+      semana de la ventana de análisis. Grano: date_key (domingo de la semana). Es la misma serie que usa el Sortino
+      como mínimo aceptable, y sirve de referencia en el gráfico de crecimiento base 100.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_key]
+    columns:
+      - name: date_key
+        description: "Clave de la semana en dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: estr_date
+        description: "Fecha del último valor publicado en o antes del domingo."
+      - name: estr_index
+        description: "Nivel del índice compuesto del €STR."
+        tests: [not_null]
+
+  - name: fact_compartment_monthly
+    description: >
+      Flujos mensuales por compartimento. Grano: compartment_id x date_key (último día del mes).
+      El puente diario es de clase y aquí se agrega a compartimento, que es la granularidad de
+      FONDPATRIMDISVAR. Las comisiones y gastos son semestrales y viven en
+      fact_fund_period_financials, no aquí: mezclar ambos grains dejaba las columnas de comisión
+      nulas diez meses de cada doce. participant_retention es un proxy: compara los partícipes
+      de meses consecutivos.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, date_key]
+    columns:
+      - name: date_key
+        description: "Último día del mes; clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: aum
+        description: "Patrimonio al cierre del mes."
+      - name: average_aum
+        description: "Patrimonio medio del mes; es la base de los rendimientos."
+      - name: net_flows
+        description: "Flujo neto del mes: suscripciones menos reembolsos."
+      - name: market_effect
+        description: "Cambio del patrimonio atribuible al valor liquidativo."
+      - name: delta_aum
+        description: "Cambio del patrimonio en el mes sin operaciones corporativas (días con cambio de capital o salto de precio). Cumple net_flows + market_effect = delta_aum."
+      - name: corporate_action_delta_aum
+        description: "Cambio del patrimonio en los días excluidos por ser operaciones corporativas (fusión, cambio de clase, descapitalización). No es flujo ni efecto mercado."
+      - name: net_flow_yield
+        description: "Flujo neto sobre el patrimonio medio del mes."
+      - name: market_growth
+        description: "Efecto mercado sobre el patrimonio medio del mes."
+      - name: total_growth
+        description: "Cambio total del patrimonio sobre el patrimonio medio del mes."
+      - name: outflow_share
+        description: "Salidas netas sobre el patrimonio medio del mes; negativo o cero."
+      - name: participant_retention
+        description: "Partícipes al cierre del mes (suma de las clases) sobre los del mes anterior. Es un proxy, no retención bruta: quien tiene dos clases cuenta dos veces."
+      - name: participant_retention_2m
+        description: "Partícipes del mes sobre los de dos meses antes; solo si hay datos exactamente dos meses antes."
+      - name: aum_retention
+        description: "Patrimonio de fin de mes sobre el del mes anterior; solo se calcula entre meses consecutivos."
+      - name: is_flow_outlier
+        description: "|net_flow_yield| > max_abs_flow_yield. Flag para filtrar escalas; no elimina filas."
+        tests: [not_null]
+      - name: n_capital_changes
+        description: "Saltos de capital del mes: fusiones o cambios de clase."
+      - name: n_jumps
+        description: "Saltos de precio del mes."
+
+  - name: fact_market_fee_and_aum
+    description: >
+      Mercado español de fondos: patrimonio gestionado y concentración de fees por grupo gestora.
+      Grano: month. Tabla de mercado, no de compartimentos.
+      total_aum_managed y n_manager_groups_active están disponibles todos los meses.
+      total_management_fee_revenue_ytd, hhi_fee, effective_n_groups, n_manager_groups y top5_fee_share
+      solo existen en los meses de cierre (junio y diciembre), porque FONDPATRIMDISVAR informa
+      en semestres y acumula el ejercicio. El nombre refleja que el modelo mezcla patrimonio
+      gestionado, que es mensual, con concentración de fees, que es semestral.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_key]
+    columns:
+      - name: date_key
+        description: "Último día del mes; clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: total_aum_managed
+        description: "Patrimonio gestionado total del país en el mes."
+      - name: n_manager_groups_active
+        description: "Grupos gestoras con patrimonio en el mes."
+      - name: total_management_fee_revenue_ytd
+        description: "Ingresos por comisión de gestión del mercado acumulados del ejercicio, solo en meses de cierre. Junio y diciembre no son comparables entre sí."
+      - name: total_management_fee_revenue_annualized
+        description: "Ingresos por comisión de gestión del mercado anualizados; usar esta serie para comparar cierres de distinto mes."
+      - name: hhi_fee
+        description: "Concentración de los ingresos por comisión de gestión entre grupos gestoras; 1 sería un único grupo."
+      - name: effective_n_groups
+        description: "Número de grupos con el mismo peso que el reparto observado."
+      - name: n_manager_groups
+        description: "Grupos gestoras con ingresos por fee en el mes de cierre."
+      - name: top5_fee_share
+        description: "Proporción de los ingresos por comisión de gestión que aportan los cinco grupos mayores."
+
+  - name: fact_manager_group_monthly
+    description: >
+      Detalle por grupo gestora y mes. Grano: month x manager_group_id.
+      Es lo que explica el HHI: sin el detalle por grupo, la caída del HHI se lee como
+      desconcentración sin poder distinguir si viene de los grandes o de la cola.
+      market_share es la cuota de patrimonio del grupo sobre el total gestionado en el mes.
+      Los ingresos usan solo la comisión de gestión y solo existen en los cierres semestrales.
+      Los flujos separan el crecimiento orgánico (clientes) del de mercado.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_key, manager_group_id]
+    columns:
+      - name: date_key
+        description: "Último día del mes; clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: manager_group_id
+        description: "Clave hacia dim_manager_group."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_manager_group')
+                field: manager_group_id
+      - name: rank_by_aum
+        description: "Posición del grupo por patrimonio gestionado en el mes."
+      - name: n_manager_groups
+        description: "Grupos gestoras con patrimonio en el mes."
+      - name: aum_managed
+        description: "Patrimonio gestionado por el grupo en el mes."
+      - name: total_aum_managed
+        description: "Patrimonio gestionado total del mercado en el mes."
+      - name: market_share
+        description: "Cuota de patrimonio del grupo sobre el total del mercado en el mes."
+      - name: management_fee_revenue_ytd
+        description: "Ingreso estimado de la gestora acumulado del ejercicio: comisión de gestión x patrimonio medio. No incluye la comisión de depositaría (no es de la gestora). Solo en cierres (junio y diciembre). Es un proxy: bruto de retrocesiones a distribuidores y sin costes."
+      - name: management_fee_revenue_annualized
+        description: "management_fee_revenue_ytd x 12 / meses del periodo; comparable entre junio y diciembre."
+      - name: management_fee_yield_annualized_rate
+        description: "Comisión de gestión media anualizada del grupo, ponderada por patrimonio (ingreso anualizado / patrimonio medio). Dice quién cobra más por euro gestionado."
+      - name: net_flows
+        description: "Flujo neto del mes del grupo: suma de los compartimentos, sin operaciones corporativas. Es dinero aportado o retirado por los clientes."
+      - name: market_effect
+        description: "Efecto mercado del mes del grupo: variación del patrimonio por la evolución de los precios."
+      - name: net_flow_yield
+        description: "Flujo neto sobre el patrimonio medio del mes: crecimiento orgánico del grupo."
+      - name: market_growth
+        description: "Efecto mercado sobre el patrimonio medio del mes: crecimiento por mercado."
+
+  - name: fact_class_nav_weekly
+    description: >
+      Serie semanal rebasada a 100 para gráficos de rendimiento. Grano: class_id x date_key (domingo de la semana).
+      Solo incluye clases elegibles: una serie rebasada compara rendimiento y solo tiene sentido
+      entre clases con métricas completas. La base 100 es el valor liquidativo de la primera semana
+      con dato de la serie de cada clase, no el inicio del calendario: una clase con historia corta
+      parte de 100 en su primera semana observada.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_id, date_key]
+    columns:
+      - name: class_id
+        description: "Clave sustituta de la clase; relaciona con dim_class."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: date_key
+        description: "Clave de la semana en dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: nav
+        description: "Valor liquidativo semanal."
+
+  - name: fact_fund_anomalies
+    description: >
+      Anomalías tipadas detectadas en la plataforma. Grano: fund_key x compartment_key x period x anomaly_type x class_key.
+      Una fila por anomalía detectada, no por clase: una clase con tres anomalías tiene tres filas.
+      La clase forma parte de la clave porque las anomalías de la serie de NAV y de calidad se detectan
+      a nivel de clase, y sin ella no se puede saber sobre qué actuar.
+      La severidad high reserva revisión manual y nunca elimina un fondo por sí sola.
+      Los periodos de los tipos de flujo y de fee son mensuales; los de la serie semanal, trimestrales.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_id, date_key, anomaly_type, class_id]
+    columns:
+      - name: date_key
+        description: "Fecha de la señal; clave hacia dim_date."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: class_id
+        description: "Clase donde se detecta la anomalía; nula en las de compartimento."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_class')
+                field: class_id
+      - name: anomaly_type
+        description: "Tipo de anomalía detectada."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'nav_extreme_return'
+                  - 'nav_gap'
+                  - 'nav_stale'
+                  - 'dormant'
+                  - 'coverage_lt_min'
+                  - 'stale_end'
+                  - 'short_history'
+                  - 'recon_error'
+                  - 'fee_outlier'
+                  - 'fee_period_missing'
+                  - 'flow_extreme_outflow'
+      - name: severity
+        description: "info, warn o high. La severidad high exige revisión manual."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['info', 'warn', 'high']
+      - name: metric_value
+        description: "Valor observado que dispara la anomalía."
+      - name: threshold
+        description: "Umbral contra el que se compara el valor observado."
+      - name: source
+        description: "Modelo o tabla de la que procede la detección."
+        tests: [not_null]
+      - name: description
+        description: "Explicación legible de la anomalía."
+        tests: [not_null]

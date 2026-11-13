@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: meta_run
+    description: >
+      Contexto de la ejecución (1 fila). Es el único modelo que lee la variable as_of_period;
+      el resto del proyecto la consulta aquí. as_of_period es 'latest' (por defecto, el último
+      periodo de Silver) o un YYYYMM explícito para reprocesar un corte anterior.
+    columns:
+      - name: as_of_period
+        description: "Periodo de corte resuelto (YYYYMM). Único: meta_run tiene una sola fila."
+        tests: [unique, not_null]
+      - name: as_of_month_start_date
+        description: "Primer día del mes del corte."
+        tests: [not_null]
+      - name: as_of_date
+        description: "Último día con datos de NAV hasta el corte; final de la ventana de análisis."
+        tests: [not_null]
+      - name: window_start
+        description: "Inicio de la ventana de análisis (window_months meses completos hasta as_of_date)."
+        tests: [not_null]
+      - name: window_months
+        description: "Longitud de la ventana en meses."
+      - name: requested_period
+        description: "Valor pedido: 'latest' o YYYYMM. Sirve para auditar cómo se resolvió el corte."
+      - name: silver_max_period
+        description: "Último periodo disponible en Silver."
+      - name: built_at
+        description: "Marca de tiempo de la construcción."

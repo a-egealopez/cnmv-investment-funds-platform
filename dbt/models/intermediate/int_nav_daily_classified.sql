@@ -1,7 +1,11 @@
+{{ config(materialized='view') }}
 with source as (
+    -- Data after the cut-off of the run is not part of this run.
     select *
     from
         {{ ref('stg_fund_nav_daily') }}
+    where
+        period <= {{ current_as_of_period() }}
 )
 
 select

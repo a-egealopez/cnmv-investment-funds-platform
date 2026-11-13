@@ -11,3 +11,6 @@ ROADMAP.md
 dbt_plan.md
 .opencode/
 tests/fixtures/silver
+dbt_packages/
+docs/technical/power_bi_guide.md
+bi/power_bi_theme.json

@@ -1,0 +1,196 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      Calendario diario, única tabla de fechas del modelo (no hay dim_month). Grano: 1 día.
+      Empieza el primer día del trimestre del primer dato y termina el último día del mes del último dato (o el domingo de su semana, si es posterior).
+      Todos los hechos se relacionan con ella por date_key; los hechos mensuales usan el
+      último día del mes.
+    columns:
+      - name: is_weekend
+        description: "Sábado o domingo."
+      - name: iso_dow
+        description: "Día de la semana ISO (1 lunes ... 7 domingo)."
+      - name: iso_week
+        description: "Semana ISO del año."
+      - name: month
+        description: "Mes del año (1 a 12)."
+      - name: quarter
+        description: "Trimestre del año (1 a 4)."
+      - name: year
+        description: "Año."
+      - name: date_day
+        description: "Fecha calendario; columna DATE."
+        tests: [unique, not_null]
+      - name: date_key
+        description: "Clave entera YYYYMMDD."
+        tests: [unique, not_null]
+      - name: month_key
+        description: "YYYYMM; atributo de agrupación y orden, no clave de relación."
+        tests: [not_null]
+      - name: month_end_date
+        description: "Último día del mes."
+        tests: [not_null]
+      - name: month_label
+        description: "Etiqueta de presentación del mes (ej. Jan 2026); ordenar por month_key."
+        tests: [not_null]
+      - name: month_name
+        description: "Nombre del mes."
+        tests: [not_null]
+      - name: is_month_end
+        description: "True si date_day es el último día del mes."
+        tests: [not_null]
+      - name: is_closing_month
+        description: "True en junio y diciembre (cierres semestrales de FONDPATRIMDISVAR)."
+        tests: [not_null]
+      - name: week_start_date
+        description: "Lunes de la semana ISO."
+        tests: [not_null]
+      - name: week_end_date
+        description: "Domingo de la semana ISO."
+        tests: [not_null]
+
+  - name: dim_compartment
+    description: "Dimensión Type 1 de compartimento. Grano: 1 compartimento. Integra metadata y vocación/ClaseFondo de FONDTRIM."
+    columns:
+      - name: display_name
+        description: "Etiqueta legible y única para segmentadores y tablas. Relaciona siempre por el id, nunca por la etiqueta."
+        tests: [unique, not_null]
+      - name: fund_class
+        description: "Clase de fondo según FONDTRIM (ClaseFondo)."
+      - name: compartment_number
+        description: "Número de compartimento dentro del fondo (0 si el fondo no tiene compartimentos)."
+      - name: depositary_registration_number
+        description: "Número de registro CNMV de la entidad depositaria."
+      - name: manager_type
+        description: "Tipo de sociedad gestora."
+      - name: manager_registration_number
+        description: "Número de registro CNMV de la sociedad gestora."
+      - name: is_etf
+        description: "Fondo cotizado (ETF)."
+      - name: registration_number
+        description: "Número de registro CNMV del fondo."
+      - name: fund_type
+        description: "Tipo de institución de inversión colectiva (por ejemplo FI o SICAV)."
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+      - name: compartment_id
+        description: "Clave sustituta del compartimento; relaciona con dim_compartment."
+        tests: [unique, not_null]
+      - name: fund_key
+        description: "Clave natural del fondo (fund_type|registration_number); trazabilidad, oculta en Power BI."
+        tests: [not_null]
+      - name: fund_name
+        description: "Fondo al que pertenece el compartimento (atributo aplanado; no hay dim_fund)."
+        tests: [not_null]
+      - name: manager_name
+        description: "Sociedad gestora."
+        tests: [not_null]
+      - name: manager_group_name
+        description: "Grupo de la sociedad gestora."
+        tests: [not_null]
+      - name: manager_group_id
+        description: "Atributo de filtrado coincidente con dim_manager_group. -1 = Desconocido. No se relaciona en el modelo semántico (estrella estricta)."
+        tests: [not_null]
+      - name: depositary_name
+        description: "Entidad depositaria."
+        tests: [not_null]
+      - name: depositary_group_name
+        description: "Grupo depositario (atributo aplanado; no hay dim_depositary_group)."
+      - name: compartment_name
+        description: "Nombre del compartimento. Suele ser genérico ('COMPARTIMENTO 0'); para etiquetar usa display_name."
+        tests: [not_null]
+      - name: vocation_family
+        description: "Familia de vocación; agrupa las vocaciones."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Renta Fija', 'Renta Variable', 'Global', 'Retorno Absoluto', 'Garantizados', 'Gestión Pasiva', 'Sin vocación']
+      - name: include_in_watchlist
+        description: "La familia de vocación puede entrar en la selección de la watchlist (seed vocacion_family)."
+        tests: [not_null]
+      - name: vocation
+        description: "Vocación inversora CNMV (normalizada con el seed vocation_aliases)."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('vocacion_family')
+                field: vocation
+
+  - name: dim_class
+    description: >
+      Dimensión Type 1 plana de producto (clase). Grano: 1 clase. Desnormaliza atributos de
+      compartimento y fondo para consumo analítico (opción A: sin estado/foto de snapshot;
+      ver mart_fund_class_status). Conserva claves naturales (*_key) por compatibilidad interna.
+    columns:
+      - name: include_in_watchlist
+        description: "La familia de vocación puede entrar en la selección de la watchlist (seed vocacion_family)."
+      - name: class_number
+        description: "Número de clase dentro del compartimento."
+      - name: compartment_key
+        description: "Clave natural del compartimento (tipo|registro|compartimento); solo trazabilidad, ocultar en Power BI."
+      - name: class_id
+        description: "Clave surrogate de la clase."
+        tests: [unique, not_null]
+      - name: class_key
+        description: "Clave natural (compatibilidad interna/trazabilidad); candidata a mover a audit_*."
+        tests: [unique, not_null]
+      - name: compartment_id
+        description: "Compartimento al que pertenece la clase. Nulo solo en el miembro -1 (señales de anomalía a nivel de compartimento)."
+        tests:
+          - not_null:
+              config:
+                where: "class_id <> -1"
+          - relationships:
+              arguments:
+                to: ref('dim_compartment')
+                field: compartment_id
+      - name: class_name
+        description: "Nombre de la clase."
+        tests: [not_null]
+      - name: isin
+        description: "Código ISIN de la clase."
+        tests: [not_null]
+      - name: class_currency_code
+        description: "Divisa de la clase; 'N/D' si la clase no está en FONDTRIM."
+      - name: iic_currency_code
+        description: "Divisa de la IIC/compartimento según FONDTRIM."
+      - name: fund_name
+        description: "Nombre del fondo."
+      - name: compartment_name
+        description: "Nombre del compartimento. Suele ser genérico ('COMPARTIMENTO 0'); para etiquetar usa display_name."
+      - name: compartment_number
+        description: "Número de compartimento dentro del fondo (0 si el fondo no tiene compartimentos)."
+      - name: vocation
+        description: "Vocación inversora CNMV (normalizada con el seed vocation_aliases)."
+      - name: vocation_family
+        description: "Familia de vocación; agrupa las vocaciones."
+      - name: fund_class
+        description: "Clase de fondo según FONDTRIM (ClaseFondo)."
+      - name: manager_group_id
+        description: "Identificador del grupo gestor; -1 = Desconocido. Relaciona con dim_manager_group."
+      - name: manager_group_name
+        description: "Grupo de la sociedad gestora."
+      - name: manager_name
+        description: "Sociedad gestora."
+      - name: depositary_name
+        description: "Entidad depositaria."
+      - name: depositary_group_name
+        description: "Grupo de la entidad depositaria."
+      - name: is_etf
+        description: "Fondo cotizado (ETF)."
+      - name: display_name
+        description: "Nombre de presentación: fondo · compartimento · clase."
+        tests: [unique, not_null]
+
+  - name: dim_manager_group
+    description: "Dimensión de grupo gestora. Grano: 1 grupo."
+    columns:
+      - name: manager_group_id
+        description: "Identificador del grupo gestor; -1 = Desconocido. Relaciona con dim_manager_group."
+        tests: [unique, not_null]
+      - name: manager_group_name
+        description: "Grupo de la sociedad gestora."
+        tests: [unique, not_null]

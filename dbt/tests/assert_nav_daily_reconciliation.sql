@@ -1,5 +1,5 @@
 with staging as (
-    select count(*) as n from {{ ref('stg_fund_nav_daily') }}
+    select count(*) as n from {{ ref('stg_fund_nav_daily') }} where period <= {{ current_as_of_period() }}
 ),
 
 fact as (
