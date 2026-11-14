@@ -13,6 +13,8 @@ permissions:
   contents: read
 
 jobs:
+  # ── Code quality and security (static analysis, SAST, SCA, secret scanning) ──
+  # Linting and formatting (Ruff)
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -33,6 +35,91 @@ jobs:
       - name: Ruff format
         run: ruff format --check .
 
+  # SAST: static application security testing
+  sast:
+    name: Bandit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit==1.8.6
+
+      # -ll: only medium and high severity
+      - name: Bandit
+        run: bandit -r ingestion spark dags -ll -q
+
+  # SCA: software composition analysis of third-party dependencies
+  deps-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.9.0
+
+      - name: Audit dependencies
+        run: pip-audit -r requirements.txt
+
+  # Secret scanning (Gitleaks)
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Conventional Commits enforcement
+  commitizen:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Commitizen
+        run: pip install commitizen==4.1.0
+
+      - name: Check commit messages
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            cz check --rev-range origin/${{ github.event.pull_request.base.ref }}..HEAD
+          else
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              cz check --rev-range HEAD~1..HEAD
+            else
+              echo "Only one commit in the repository. Checking format..."
+              git log -1 --format=%B > .git/committmp
+              cz check --commit-msg-file .git/committmp
+            fi
+          fi
+
+  # ── Automated testing (unit tests, data-model validation) ──
   test:
     name: Python tests
     runs-on: ubuntu-latest
@@ -90,49 +177,68 @@ jobs:
           --exclude assert_panorama_not_empty
           --vars '{as_of_period: "202605", silver_root: "tests/fixtures/silver"}'
 
-  secrets:
-    name: Secret scan
+  # ── Containerization and container vulnerability scanning (no publishing) ──
+  docker-build:
+    name: Docker build (${{ matrix.service }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: write
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ingestion, spark, dbt]
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
         with:
-          fetch-depth: 0
+          context: .
+          file: docker/${{ matrix.service }}/Dockerfile
+          push: false
+          load: true
+          tags: cnmv-${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # exit-code "0" only reports; switch to "1" once the report is clean
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: cnmv-${{ matrix.service }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
 
-  commitizen:
-    name: Commit messages
+  # Thin layer over the official Airflow image: build, smoke test and report only.
+  airflow-build:
+    name: Docker build (airflow)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
         with:
-          fetch-depth: 0
+          context: airflow
+          push: false
+          load: true
+          tags: cnmv-airflow:ci
+          cache-from: type=gha,scope=airflow
+          cache-to: type=gha,mode=max,scope=airflow
 
-      - uses: actions/setup-python@v7
+      - name: Smoke test
+        run: docker run --rm cnmv-airflow:ci airflow version
+
+      # Report only: most findings come from the upstream base image
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.33.1
         with:
-          python-version: "3.12"
-
-      - name: Install Commitizen
-        run: pip install commitizen==4.1.0
-
-      - name: Check commit messages
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            cz check --rev-range origin/${{ github.event.pull_request.base.ref }}..HEAD
-          else
-            if git rev-parse HEAD~1 >/dev/null 2>&1; then
-              cz check --rev-range HEAD~1..HEAD
-            else
-              echo "Solo existe un commit en el repositorio. Verificando formato..."
-              git log -1 --format=%B > .git/committmp
-              cz check --commit-msg-file .git/committmp
-            fi
-          fi
+          image-ref: cnmv-airflow:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table

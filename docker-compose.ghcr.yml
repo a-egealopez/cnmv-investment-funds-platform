@@ -1,0 +1,17 @@
+# Override: run the images published by the CD workflow instead of building locally.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
+#   CNMV_IMAGE_TAG=sha-<commit> docker compose -f docker-compose.yml -f docker-compose.ghcr.yml run --rm spark
+#
+# CNMV_IMAGE_TAG defaults to "latest"; pin a sha-<commit> tag for reproducible runs.
+services:
+  ingestion:
+    image: ghcr.io/a-egealopez/cnmv-investment-funds-platform/cnmv-ingestion:${CNMV_IMAGE_TAG:-latest}
+  spark:
+    image: ghcr.io/a-egealopez/cnmv-investment-funds-platform/cnmv-spark:${CNMV_IMAGE_TAG:-latest}
+  validate:
+    image: ghcr.io/a-egealopez/cnmv-investment-funds-platform/cnmv-spark:${CNMV_IMAGE_TAG:-latest}
+  dbt:
+    image: ghcr.io/a-egealopez/cnmv-investment-funds-platform/cnmv-dbt:${CNMV_IMAGE_TAG:-latest}
+  export:
+    image: ghcr.io/a-egealopez/cnmv-investment-funds-platform/cnmv-dbt:${CNMV_IMAGE_TAG:-latest}

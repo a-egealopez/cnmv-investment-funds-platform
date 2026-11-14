@@ -1,0 +1,54 @@
+name: cd
+
+# CD: runs only after the "ci" quality gates pass on master.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [master]
+
+concurrency:
+  group: cd-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Publish OCI images to GHCR (artifact registry), tagged by commit SHA
+  publish:
+    name: Publish (${{ matrix.service }})
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [ingestion, spark, dbt]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/cnmv-${{ matrix.service }}:sha-${{ github.event.workflow_run.head_sha }}
+            ghcr.io/${{ github.repository }}/cnmv-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}

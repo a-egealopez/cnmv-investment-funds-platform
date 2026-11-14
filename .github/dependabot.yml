@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  # Workflow actions (checkout, setup-python, docker/*, trivy...)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python dependencies pinned in requirements/*.txt
+  - package-ecosystem: pip
+    directory: /requirements
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      python:
+        patterns: ["*"]
+
+  # Base images in docker/*/Dockerfile and airflow/Dockerfile
+  - package-ecosystem: docker
+    directories:
+      - /docker/ingestion
+      - /docker/spark
+      - /docker/dbt
+      - /airflow
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
