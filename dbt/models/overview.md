@@ -16,7 +16,7 @@ Abre el grafo (icono azul abajo a la derecha) y filtra por carpeta. El flujo es 
 | Intermedia | `intermediate/` | Lógica reutilizable: retornos semanales, métricas por clase, puente de patrimonio, clase representativa, ranking de pares |
 | Dimensiones | `dimensions/` | `dim_date`, `dim_compartment`, `dim_class`, `dim_manager_group`. Planas, con etiquetas únicas y miembro `-1` «Desconocido» |
 | Hechos | `facts/` | Una fila por entidad y fecha, con una sola clave de fecha (`date_key`) |
-| Vistas | `reports/` | `mart_fund_panorama` (una fila por compartimento) y `mart_fund_class_status` (auditoría) |
+| Vistas | `marts/` | `mart_fund_panorama` (una fila por compartimento) y `mart_fund_class_status` (auditoría) |
 | Calidad | `quality/` | `quarantine_nav_daily`: filas descartadas por valores negativos materiales |
 | Metadatos | `meta/` | `meta_run`: el corte de la ejecución (`as_of_period`), definido en un único sitio |
 

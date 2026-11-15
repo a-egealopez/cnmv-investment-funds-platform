@@ -138,14 +138,24 @@ select
     cl.class_id,
     m.ret_1y,
     m.cagr_3y,
-    m.vol,
+    m.vol as vol_3y,
     m.srri_like_class,
-    m.sortino,
-    m.sortino_status,
-    m.max_drawdown,
+    m.sortino as sortino_3y,
+    m.sortino_status as sortino_status_3y,
+    m.max_drawdown as max_drawdown_3y,
     m.coverage_ratio,
     m.stale_share,
     m.gap_share,
+
+    -- 5-year metrics: shown only when the class passes the same quality screen
+    -- over the long window, so a shorter history never passes for five years.
+    -- Ranking and watchlist stay on the 3-year metrics above.
+    case when m5.class_status = 'eligible' then m5.cagr_5y end as cagr_5y,
+    case when m5.class_status = 'eligible' then m5.vol end as vol_5y,
+    case when m5.class_status = 'eligible' then m5.sortino end as sortino_5y,
+    case when m5.class_status = 'eligible' then m5.sortino_status end as sortino_status_5y,
+    case when m5.class_status = 'eligible' then m5.max_drawdown end as max_drawdown_5y,
+    coalesce(m5.class_status, 'short_history') as class_status_5y,
 
     cast(a.aum as double) as aum,
     cast(a.participants as bigint) as participants,
@@ -198,6 +208,8 @@ inner join {{ ref('dim_class') }} as cl
     on cl.class_key = r.class_key
 inner join {{ ref('int_class_metrics') }} as m
     on m.class_key = r.class_key
+left join {{ ref('int_class_metrics_5y') }} as m5
+    on m5.class_key = r.class_key
 inner join active_compartments as a
     on a.compartment_id = d.compartment_id
 left join holdings_concentration as h

@@ -20,6 +20,10 @@ vars:
   window_months: 36
     # Months of history covered by the analysis window.
     # Origin: Morningstar. Base: requires 36 months of continuous history.
+  window_months_long: 60
+    # Months of the long window for the 5-year metrics, reported alongside the 3-year ones.
+    # Origin: Morningstar 3- and 5-year horizons. Base: Silver starts in 202001, so a full
+    # 60-month window fits; ranking and watchlist stay on the 3-year window.
   min_coverage: 0.90
     # Minimum week coverage over expected.
     # Origin: notebook 02, §4. Base: 2,211 classes with coverage 1.00 against a ceiling of 0.98.
@@ -119,5 +123,5 @@ models:
       +materialized: table
     facts:
       +materialized: table
-    reports:
+    marts:
       +materialized: table

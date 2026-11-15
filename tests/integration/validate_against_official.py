@@ -9,14 +9,17 @@ Usage (from the repository root, after `dbt build` against the real data):
     python tests/integration/validate_against_official.py . data/gold/cnmv.duckdb
 """
 
+import os
 import sys
 
 import duckdb
 import numpy as np
 import pandas as pd
 
-ROOT, DB = sys.argv[1], sys.argv[2]
+ROOT, DB = os.path.abspath(sys.argv[1]), sys.argv[2]
 con = duckdb.connect(DB, read_only=True)
+# Staging views read Silver with paths relative to dbt/, so resolve them from there.
+con.execute(f"set file_search_path = '{ROOT}/dbt'")
 raw = f"read_parquet('{ROOT}/data/silver/fund_nav_daily/**/*.parquet', hive_partitioning=true)"
 
 # ------------------------------------------------------------------ 1. quarterly return and volatility
@@ -40,9 +43,8 @@ classes = rng.choice(np.sort(off["class_key"].unique()), size=1500, replace=Fals
 nav = nav[nav["class_key"].isin(classes)]
 off = off[off["class_key"].isin(classes)].copy()
 off["qprev"] = off["qend"] - pd.offsets.QuarterEnd(1)
-off = off[
-    off["qprev"] >= pd.Timestamp("2023-01-31")
-]  # need data before the quarter starts
+# need NAV data before the quarter starts; derived from the data, not a fixed date
+off = off[off["qprev"] >= nav["value_date"].min()]
 
 
 navr = nav.rename(columns={"value_date": "d"}).sort_values("d")

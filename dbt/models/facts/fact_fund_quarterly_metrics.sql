@@ -52,7 +52,7 @@ with unpivoted as (
 
 in_scope as (
 
--- M6: 2022 quarters are outside the dimension calendar.
+-- M6: quarters before the dimension calendar (2019, reported in the 202006 file) are dropped.
 -- quarter_end_date is the quarter end (31/03, 30/06, 30/09, 31/12), not the start.
     select
         q.*,

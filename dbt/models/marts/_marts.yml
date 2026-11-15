@@ -51,21 +51,49 @@ models:
       - name: ret_1y
         description: "Retorno de las últimas 52 semanas."
       - name: cagr_3y
-        description: "CAGR de la ventana de 36 meses."
-      - name: vol
-        description: "Volatilidad anualizada sobre retornos semanales."
+        description: "CAGR a 3 años (ventana de 36 meses)."
+      - name: vol_3y
+        description: "Volatilidad anualizada a 3 años sobre retornos semanales."
       - name: srri_like_class
         description: "Clase de riesgo tipo SRRI, de 1 a 7."
-      - name: sortino
-        description: "Sortino de la clase representativa."
-      - name: sortino_status
+      - name: sortino_3y
+        description: "Sortino a 3 años de la clase representativa."
+      - name: sortino_status_3y
         description: "ok, no_downside o stagnant."
-      - name: max_drawdown
-        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable."
+      - name: max_drawdown_3y
+        description: "Máximo drawdown a 3 años: mayor caída respecto al pico acumulado en la serie diaria laborable."
       - name: coverage_ratio
         description: "Cobertura de semanas con precio válido sobre las teóricas de la ventana."
       - name: stale_share
         description: "Proporción de semanas con retorno cero."
+      - name: cagr_5y
+        description: "CAGR de la ventana de 5 años; nulo si la clase no es eligible a 5 años (class_status_5y)."
+      - name: vol_5y
+        description: "Volatilidad anualizada sobre retornos semanales de la ventana de 5 años; nula si no es eligible a 5 años."
+      - name: sortino_5y
+        description: "Sortino frente al €STR sobre la ventana de 5 años; nulo si no es eligible a 5 años. No interviene en el ranking."
+      - name: sortino_status_5y
+        description: "ok, no_downside o stagnant para el Sortino a 5 años."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['ok', 'no_downside', 'stagnant']
+                config:
+                  where: "sortino_status_5y is not null"
+      - name: max_drawdown_5y
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable de la ventana de 5 años; nula si no es eligible a 5 años."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: class_status_5y
+        description: "eligible, quarantined o short_history con el mismo filtro de calidad aplicado a la ventana de 5 años."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['eligible', 'quarantined', 'short_history']
       - name: gap_share
         description: "Proporción de semanas sin semana anterior consecutiva."
       - name: aum

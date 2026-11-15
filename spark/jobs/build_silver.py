@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from config import BRONZE_DIR, COMPLETE_MARKER, ECB_RAW_DIR, SILVER_DIR
+from spark.common.cadence import is_semester_period
 from spark.common.session import get_spark
 from spark.parsing.estr import (
     parse_estr_csv,
@@ -120,9 +121,12 @@ def build_one(spark, periodo: str, bronze_dir: Path) -> None:
     validate_fondregistro(df)
     write_metadata(df, META_OUT)
 
-    # FONDTRIM/FONDCART ship at the semi-annual closings (06/12).
-    # FONDPATRIMDISVAR is documented as quarterly but the downloaded CNMV
-    # archives only contain 06/12; parse whichever file exists.
+    # FONDTRIM/FONDCART/FONDPATRIMDISVAR: Silver keeps the semiannual closings
+    # only (see spark.common.cadence); the quarterly 03/09 files published until
+    # 2022 stay in Bronze.
+    if not is_semester_period(periodo):
+        return
+
     patrim = mes / f"FONDPATRIMDISVAR_{periodo}.xml"
     if patrim.exists():
         df = parse_fondpatrimdisvar_xml(spark, str(patrim))

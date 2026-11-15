@@ -21,6 +21,39 @@ EXCLUDED = {
 }
 
 
+# Child dimension -> (parent dimension, columns it keeps although the parent has them).
+# dim_class repeats the compartment's attributes, which is convenient in SQL. Power BI
+# relates dim_compartment 1 -> * dim_class through compartment_id instead, so each
+# attribute is filtered from one table only. display_name is the class's own label.
+CHILD_DIMENSIONS = {
+    "dim_class": ("dim_compartment", {"compartment_id", "display_name"}),
+}
+
+
+def table_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
+    return [
+        r[0] for r in con.execute(f'describe select * from main."{table}"').fetchall()
+    ]
+
+
+def repeated_parent_columns(con: duckdb.DuckDBPyConnection, table: str) -> list[str]:
+    """Columns of a child dimension that its parent dimension already holds."""
+    if table not in CHILD_DIMENSIONS:
+        return []
+    parent, keep = CHILD_DIMENSIONS[table]
+    parent_columns = {
+        name
+        for (name,) in con.execute(
+            "select column_name from information_schema.columns "
+            "where table_schema = 'main' and table_name = ?",
+            [parent],
+        ).fetchall()
+    }
+    return [
+        c for c in table_columns(con, table) if c in parent_columns and c not in keep
+    ]
+
+
 def bi_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
     rows = con.execute(
         """
@@ -58,20 +91,21 @@ def hidden_columns(columns: list[str]) -> list[str]:
 def export_table(con: duckdb.DuckDBPyConnection, table: str, out_dir: Path) -> dict:
     dest = out_dir / f"{table}.parquet"
     dest_sql = str(dest).replace("'", "''")
+    dropped = repeated_parent_columns(con, table)
+    columns = [c for c in table_columns(con, table) if c not in dropped]
+    select_list = ", ".join(f'"{c}"' for c in columns)
     con.execute(
-        f"copy (select * from main.\"{table}\") to '{dest_sql}' "
+        f"copy (select {select_list} from main.\"{table}\") to '{dest_sql}' "
         "(format parquet, compression zstd)"
     )
     count_row = con.execute(f'select count(*) from main."{table}"').fetchone()
     rows = count_row[0] if count_row else 0
-    columns = [
-        r[0] for r in con.execute(f'describe select * from main."{table}"').fetchall()
-    ]
     return {
         "rows": rows,
         "bytes": dest.stat().st_size,
         "columns": columns,
         "hidden_columns": hidden_columns(columns),
+        "dropped_columns": dropped,
     }
 
 

@@ -176,7 +176,7 @@ models:
     description: >
       Métricas trimestrales oficiales de FONDTRIM por clase. Grano: class_id x date_key (fin de trimestre).
       FONDTRIM publica el trimestre actual y los tres anteriores en cada fichero semestral (06 y 12),
-      así que cada trimestre aparece en dos ficheros. Se deduplica con prioridad current > t1 > t2 > t3.
+      así que cada trimestre aparece en dos ficheros. Se deduplica con el fichero más reciente primero y, dentro de él, current > t1 > t2 > t3.
       date_key es el fin de trimestre (31/03, 30/06, 30/09, 31/12).
       Los trimestres de 2022 quedan fuera del calendario de dim_date.
     tests:

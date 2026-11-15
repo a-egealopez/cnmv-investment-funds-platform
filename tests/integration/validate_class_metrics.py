@@ -73,7 +73,11 @@ estr = con.sql(
         where series = 'EST.B.EU000A2QQF08.CI' order by value_date"""
 ).df()
 estr["value_date"] = pd.to_datetime(estr["value_date"]).astype("datetime64[ns]")
-sundays = pd.date_range(AS_OF - pd.Timedelta(days=4 * 365), AS_OF, freq="W-SUN")
+# End at the Sunday closing the cut-off week, which dbt also includes when the
+# cut-off date is not itself a Sunday.
+sundays = pd.date_range(
+    AS_OF - pd.Timedelta(days=4 * 365), AS_OF + pd.Timedelta(days=6), freq="W-SUN"
+)
 sundays = sundays[
     (sundays >= WINDOW_START) & (sundays - pd.Timedelta(days=6) <= AS_OF)
 ].astype("datetime64[ns]")

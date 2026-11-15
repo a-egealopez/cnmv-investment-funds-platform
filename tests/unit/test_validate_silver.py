@@ -348,9 +348,9 @@ def test_expected_artifact_periods_follow_source_cadence(tmp_path):
         "202306",
         "202312",
     }
+    # Silver keeps only the semiannual closings, even when Bronze has a 03/09 file.
     assert expected_artifact_periods("fund_period_financials", tmp_path) == {
         "202306",
-        "202309",
         "202312",
     }
 

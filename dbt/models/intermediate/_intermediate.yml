@@ -367,3 +367,50 @@ models:
       - name: participants
         description: "Número de partícipes."
         tests: [not_null]
+
+  - name: int_weekly_nav_returns_5y
+    description: >
+      Serie semanal por clase dentro de la ventana larga de 5 años (window_months_long).
+      Mismas reglas que int_weekly_nav_returns (macro weekly_nav_returns); el €STR semanal
+      se construye en línea para esta ventana, de modo que fact_estr_weekly conserva la de 36 meses.
+      Grano: class_key x week_end_date.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, week_end_date]
+    columns:
+      - name: class_key
+        description: "Clave natural de la clase."
+        tests: [not_null]
+      - name: week_end_date
+        description: "Domingo ISO de la semana."
+        tests: [not_null]
+
+  - name: int_class_metrics_5y
+    description: >
+      Métricas de riesgo y rendimiento por clase sobre la ventana de 5 años, con las mismas fórmulas
+      y el mismo filtro de calidad que int_class_metrics (macro class_metrics). Grano: class_key.
+      Se publican junto a las de 36 meses en mart_fund_panorama; el ranking y la watchlist no las usan.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key]
+    columns:
+      - name: class_key
+        description: "Clave natural de la clase."
+        tests: [not_null]
+      - name: cagr_5y
+        description: "CAGR de la ventana de 5 años: precio final sobre el inicial, anualizado por días transcurridos."
+      - name: max_drawdown
+        description: "Mayor caída respecto al pico acumulado en la serie diaria laborable de la ventana de 5 años."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: class_status
+        description: "eligible, quarantined o short_history sobre la ventana de 5 años."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['eligible', 'quarantined', 'short_history']

@@ -1,6 +1,7 @@
 -- Flow vs official FONDPATRIMDISVAR comparison.
 -- YTD net redemptions % vs average daily AUM per compartment.
--- Periods: 202406, 202412, 202506, 202512. 2023 excluded (no H1-2022 data).
+-- Periods: closings whose whole YTD span lies inside the analysis window, because the
+-- calculated flows come from int_fund_aum_bridge, which only covers that window.
 -- Tolerance: 0.05 (5pp); 98.5% of eligible compartments within 5pp, median 0.004pp.
 -- Remainder: Popup/fusion operations not reconstructible from daily NAV.
 
@@ -8,7 +9,9 @@
 -- Known baseline: 98 compartments in real data (~1.5%). It only warns if the issue grows.
 
 -- Closings of the official file, derived from the data. The first year of data is
--- excluded: the official YTD needs the patrimony of the previous year-end.
+-- excluded: the official YTD needs the patrimony of the previous year-end. A closing
+-- whose YTD starts before the analysis window is excluded too: the bridge would only
+-- add up part of the year (with data from 2020, the 202312 close covered Sep-Dec only).
 with periods as (
 
     select
@@ -27,6 +30,9 @@ with periods as (
     where cast(substr(period, 1, 4) as integer) > (
         select cast(substr(min(period), 1, 4) as integer)
         from {{ ref('stg_fund_nav_daily') }}
+    )
+      and make_date(cast(substr(period, 1, 4) as integer), 1, 1) >= (
+        select window_start from {{ ref('meta_run') }}
     )
 
 ),

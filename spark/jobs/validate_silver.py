@@ -21,6 +21,7 @@ from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 from config import BRONZE_DIR, SILVER_DIR
+from spark.common.cadence import SEMESTER_MONTHS
 from spark.common.session import get_spark
 from spark.parsing.estr import EXPECTED_SCHEMA as ESTR_EXPECTED_SCHEMA
 from spark.parsing.fondcart import EXPECTED_SCHEMA as CART_EXPECTED_SCHEMA
@@ -36,7 +37,6 @@ TRIM_PATH = str(SILVER_DIR / "fund_quarterly")
 CART_PATH = str(SILVER_DIR / "fund_holdings")
 FIN_PATH = str(SILVER_DIR / "fund_period_financials")
 ESTR_PATH = str(SILVER_DIR / "estr_daily")
-SEMESTER_MONTHS = {"06", "12"}
 EXPECTED_ESTR_SERIES = {"EST.B.EU000A2QQF08.CI", "EST.B.EU000A2QQF16.CR"}
 
 # Partition column: on read-back Spark re-infers its type (int, not string) and
@@ -60,11 +60,11 @@ TRIM_KEY = [
     "NumeroClase",
 ]
 FIN_KEY = ["FechaDatos", "Tipo", "NumeroRegistro", "NumeroCompartimento"]
-# Verified cadence: FONDTRIM/FONDCART only ship at the six-month closings.
-# FONDPATRIMDISVAR is documented as quarterly, but every downloaded archive
-# 2023-2025 only contains 06/12; the gate keeps 03/09 accepted defensively.
-TRIM_MONTHS = {"06", "12"}
-FIN_MONTHS = {"03", "06", "09", "12"}
+# Silver keeps only the semiannual closings of FONDTRIM/FONDCART/FONDPATRIMDISVAR
+# (spark.common.cadence): CNMV published them quarterly until 2022, semiannually
+# from 2023. Any 03/09 row in Silver means the cadence rule was bypassed.
+TRIM_MONTHS = SEMESTER_MONTHS
+FIN_MONTHS = SEMESTER_MONTHS
 ISIN_PATTERN = "^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
 
 # Participes counts *holders*, not units (FONDMENS PDF in bronze), so
@@ -132,14 +132,8 @@ def expected_artifact_periods(artifact: str, bronze_dir=BRONZE_DIR) -> set[str]:
     periodos = bronze_periods(bronze_dir)
     if artifact in {"fund_nav_daily", "fund_metadata"}:
         return periodos
-    if artifact in {"fund_quarterly", "fund_holdings"}:
+    if artifact in {"fund_quarterly", "fund_holdings", "fund_period_financials"}:
         return {p for p in periodos if p[4:6] in SEMESTER_MONTHS}
-    if artifact == "fund_period_financials":
-        explicit = {
-            p.parent.name.removeprefix("cnmv_")
-            for p in Path(bronze_dir).glob("cnmv_*/FONDPATRIMDISVAR_*.xml")
-        }
-        return {p for p in periodos if p[4:6] in SEMESTER_MONTHS} | explicit
     raise ValueError(f"unknown Silver artifact: {artifact}")
 
 
@@ -385,11 +379,8 @@ def check_trim_null_keys(trim):
 
 
 def check_trim_period_months(trim):
-    n = (
-        trim.filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("06"))
-        .filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("12"))
-        .count()
-    )
+    month = F.expr("substr(FechaDatos, 5, 2)")
+    n = trim.filter(~month.isin(*TRIM_MONTHS)).count()
     return n, f"{n} rows outside months {sorted(TRIM_MONTHS)}"
 
 
@@ -434,13 +425,8 @@ def check_fin_null_keys(fin):
 
 
 def check_fin_period_months(fin):
-    n = (
-        fin.filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("03"))
-        .filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("06"))
-        .filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("09"))
-        .filter(F.expr("substr(FechaDatos, 5, 2)") != F.lit("12"))
-        .count()
-    )
+    month = F.expr("substr(FechaDatos, 5, 2)")
+    n = fin.filter(~month.isin(*FIN_MONTHS)).count()
     return n, f"{n} rows outside months {sorted(FIN_MONTHS)}"
 
 
@@ -823,7 +809,7 @@ def main() -> int:
             (
                 FIN_PATH,
                 "fund_period_financials",
-                "--- fund_period_financials (FONDPATRIMDISVAR, nominal 03/06/09/12; observed 06/12) ---",
+                "--- fund_period_financials (FONDPATRIMDISVAR, semestral 06/12) ---",
                 FIN_FINDINGS,
             ),
         ]

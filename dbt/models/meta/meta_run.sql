@@ -50,6 +50,14 @@ select
         as date
     ) as window_start,
     cast({{ var('window_months') }} as integer) as window_months,
+    -- Long window for the 5-year metrics, same rule with window_months_long.
+    cast(
+        as_of_date
+        - cast({{ var('window_months_long') }} as integer) * interval '1 month'
+        + interval '1 day'
+        as date
+    ) as window_start_long,
+    cast({{ var('window_months_long') }} as integer) as window_months_long,
     requested_period,
     silver_max_period,
     current_timestamp as built_at

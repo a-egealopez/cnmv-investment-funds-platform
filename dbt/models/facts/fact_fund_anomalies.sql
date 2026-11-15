@@ -82,7 +82,7 @@ quality_anomalies as (
             when 'dormant' then 'Class has weeks with zero liquidation value (padding or dormant class)'
             when 'stale_end' then 'Last observation is prior to window end'
             when 'coverage_lt_min' then 'Week coverage below minimum'
-            else 'Class does not have complete 36-month history'
+            else 'Class does not have a complete 3-year history'
         end as description
     from
         {{ ref('int_class_metrics') }} as m

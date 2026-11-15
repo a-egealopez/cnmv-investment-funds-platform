@@ -14,7 +14,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.sdk import dag
 from docker.types import Mount
 
-HISTORY_START = "202301"
+HISTORY_START = "202001"
 DATA_MOUNT = Mount(
     source=f"{os.environ['HOST_PROJECT_DIR']}/data",
     target="/data",

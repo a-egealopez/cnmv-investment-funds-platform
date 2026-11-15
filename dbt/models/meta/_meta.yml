@@ -21,6 +21,11 @@ models:
         tests: [not_null]
       - name: window_months
         description: "Longitud de la ventana en meses."
+      - name: window_start_long
+        description: "Inicio de la ventana larga de las métricas a 5 años (window_months_long meses completos hasta as_of_date)."
+        tests: [not_null]
+      - name: window_months_long
+        description: "Longitud de la ventana larga en meses."
       - name: requested_period
         description: "Valor pedido: 'latest' o YYYYMM. Sirve para auditar cómo se resolvió el corte."
       - name: silver_max_period
