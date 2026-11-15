@@ -51,7 +51,7 @@ def parsed(spark, tmp_path):
 
 
 def test_columns_and_types(parsed):
-    assert set(parsed.columns) == {"series", "value_date", "obs_value", "obs_status"}
+    assert parsed.schema == EXPECTED_SCHEMA
 
 
 def test_long_format_and_values(parsed):

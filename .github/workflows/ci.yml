@@ -142,6 +142,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Same engine as Pylance in VS Code, so the editor and CI agree
+      - name: Type check (pyright)
+        run: pyright
+
       - name: Run tests
         run: pytest -q
 
@@ -223,7 +227,7 @@ jobs:
           exit-code: "0"
           format: table
 
-  # Thin layer over the official Airflow image: build, smoke test and report only.
+  # Thin layer over the official Airflow image: build, DAG tests and report only.
   airflow-build:
     name: Docker build (airflow)
     runs-on: ubuntu-latest
@@ -242,8 +246,12 @@ jobs:
           cache-from: type=gha,scope=airflow
           cache-to: type=gha,mode=max,scope=airflow
 
-      - name: Smoke test
-        run: docker run --rm cnmv-airflow:ci airflow version
+      # Loads the real DAG with the image's Airflow and checks its tasks and settings
+      - name: DAG integrity tests
+        run: >-
+          docker run --rm -v "$PWD":/repo:ro -w /repo -e PYTHONDONTWRITEBYTECODE=1 cnmv-airflow:ci
+          bash -c "pip install -q pytest==9.1.1 &&
+          python -m pytest -q -p no:cacheprovider --confcutdir=tests/dags tests/dags"
 
       # Report only: most findings come from the upstream base image
       - name: Trivy scan

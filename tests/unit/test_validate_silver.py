@@ -38,7 +38,7 @@ def nav_row(
     reg=1,
     comp=1,
     clase=1,
-    isin="ES0000000001",
+    isin: str | None = "ES0000000001",
 ):
     return (
         fecha,

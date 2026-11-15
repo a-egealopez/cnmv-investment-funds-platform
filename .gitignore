@@ -19,3 +19,4 @@ dbt/.user.yml
 AGENTS.md
 docs/dbt_docs/
 /.env
+.coverage

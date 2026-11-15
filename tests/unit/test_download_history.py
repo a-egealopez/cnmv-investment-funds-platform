@@ -10,11 +10,12 @@ from ingestion.download_history import (
     parse_year_page,
     sha256_of,
 )
+from tests.unit.fake_http import FakeResponse
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "cnmv_2025.html"
 
 
-def test_fixture_has_all_months():
+def test_months_map_to_01_through_12():
     assert len(MESES) == 12
     assert list(MESES.values()) == [f"{i:02d}" for i in range(1, 13)]
 
@@ -99,6 +100,35 @@ def test_extract_to_bronze_does_not_mark_missing_core_file(tmp_path):
         extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
 
     assert not (tmp_path / "bronze" / f"cnmv_{periodo}" / COMPLETE_MARKER).exists()
+
+
+def test_extract_to_bronze_normalizes_undated_names_and_drops_zone_files(tmp_path):
+    # Some CNMV zips ship FONDMENS.XML without the period, plus Windows ADS leftovers
+    periodo = "202504"
+    zip_path = _zip_with(
+        tmp_path,
+        periodo,
+        ["FONDMENS.XML", f"FONDREGISTRO_{periodo}.xml", "FONDMENS.XML:Zone.Identifier"],
+    )
+    destino = extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+
+    assert sorted(p.name for p in destino.iterdir()) == sorted(
+        [COMPLETE_MARKER, f"FONDMENS_{periodo}.xml", f"FONDREGISTRO_{periodo}.xml"]
+    )
+
+
+def test_extract_to_bronze_reuses_a_complete_extraction(tmp_path):
+    periodo = "202505"
+    zip_path = _zip_with(
+        tmp_path, periodo, [f"FONDMENS_{periodo}.xml", f"FONDREGISTRO_{periodo}.xml"]
+    )
+    destino = extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+    sentinel = destino / "left_by_first_run"
+    sentinel.write_text("x")
+
+    # Same zip, marker matches: the directory is kept as it is, not extracted again
+    extract_to_bronze(periodo, zip_path, bronze_dir=tmp_path / "bronze")
+    assert sentinel.exists()
 
 
 def _patch_pipeline(monkeypatch, pares, fail_on=()):
@@ -242,3 +272,100 @@ def test_since_still_fails_when_a_closed_year_has_no_grid(monkeypatch):
     _, fallidos = mod.run_history(range(this_year - 1, this_year + 1), since="202001")
 
     assert fallidos == [f"year {this_year - 1}"]
+
+
+def test_download_zip_leaves_no_file_when_the_body_is_not_a_zip(tmp_path, monkeypatch):
+    import ingestion.download_history as dh
+
+    monkeypatch.setattr(
+        dh.requests, "get", lambda *a, **k: FakeResponse(b"<html>error</html>")
+    )
+    with pytest.raises(ValueError, match="not a zip"):
+        dh.download_zip("202601", "u", dest_dir=tmp_path)
+
+    # Neither the final file nor the partial one is left behind
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_zip_writes_the_file_only_when_complete(tmp_path, monkeypatch):
+    import ingestion.download_history as dh
+
+    monkeypatch.setattr(
+        dh.requests, "get", lambda *a, **k: FakeResponse(b"PK\x03\x04data")
+    )
+    dest = dh.download_zip("202601", "u", dest_dir=tmp_path)
+
+    assert dest.read_bytes() == b"PK\x03\x04data"
+    assert [p.name for p in tmp_path.iterdir()] == ["cnmv_202601.zip"]
+
+
+def test_download_zip_does_not_download_an_existing_file(tmp_path, monkeypatch):
+    import ingestion.download_history as dh
+
+    (tmp_path / "cnmv_202601.zip").write_bytes(b"PK old")
+
+    def no_network(*a, **k):
+        raise AssertionError("requests.get must not be called")
+
+    monkeypatch.setattr(dh.requests, "get", no_network)
+    assert dh.download_zip("202601", "u", dest_dir=tmp_path).read_bytes() == b"PK old"
+
+
+def _manifest_setup(tmp_path, monkeypatch, registered_sha):
+    """A raw dir with one zip and a manifest row for it; network and writes recorded."""
+    import ingestion.download_history as dh
+
+    zip_path = tmp_path / "cnmv_202601.zip"
+    zip_path.write_bytes(b"PK registered")
+    manifest = tmp_path / "manifest.csv"
+    dh.append_manifest(
+        {
+            "periodo": "202601",
+            "url": "u",
+            "downloaded_at": "2026-01-01T00:00:00+00:00",
+            "sha256": registered_sha,
+            "bytes": 13,
+            "zip_name": zip_path.name,
+        },
+        manifest=manifest,
+    )
+
+    downloads, rows = [], []
+
+    def fake_download_zip(periodo, url):
+        downloads.append(periodo)
+        zip_path.write_bytes(b"PK fresh")
+        return zip_path
+
+    monkeypatch.setattr(dh, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(dh, "MANIFEST_PATH", manifest)
+    monkeypatch.setattr(dh, "download_zip", fake_download_zip)
+    monkeypatch.setattr(dh, "append_manifest", rows.append)
+    return dh, zip_path, downloads, rows
+
+
+def test_registered_zip_is_not_downloaded_again(tmp_path, monkeypatch):
+    sha = sha256_of_bytes(b"PK registered")
+    dh, zip_path, downloads, rows = _manifest_setup(tmp_path, monkeypatch, sha)
+
+    assert dh.download_with_manifest("202601", "u") == zip_path
+    assert downloads == []
+    assert rows == []
+
+
+def test_zip_that_does_not_match_the_manifest_is_downloaded_again(
+    tmp_path, monkeypatch
+):
+    dh, zip_path, downloads, rows = _manifest_setup(tmp_path, monkeypatch, "0" * 64)
+
+    dh.download_with_manifest("202601", "u")
+
+    assert downloads == ["202601"]
+    # The new download is recorded with the hash of the file now on disk
+    assert [r["sha256"] for r in rows] == [sha256_of(zip_path)]
+
+
+def sha256_of_bytes(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()

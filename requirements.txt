@@ -9,4 +9,5 @@ seaborn==0.13.2
 jupyter==1.1.1
 pre-commit==4.7.0
 ruff==0.17.1
+pyright==1.1.414
 pytest

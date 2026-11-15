@@ -1,0 +1,5 @@
+{
+  "include": ["ingestion", "spark", "bi", "tests/unit", "config.py"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.12"
+}

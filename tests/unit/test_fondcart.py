@@ -10,7 +10,12 @@ from spark.parsing.fondcart import (
 )
 
 
-def _posicion(isin="ES0000000001", valor="1000.55", clase_if="EXTERIOR", divisa="EUR"):
+def _posicion(
+    isin: str | None = "ES0000000001",
+    valor="1000.55",
+    clase_if="EXTERIOR",
+    divisa="EUR",
+):
     isin_tag = f"<CodigoISIN>{isin}</CodigoISIN>" if isin is not None else ""
     return f"""<InversionesFinancieras>
   <ClaseIF>{clase_if}</ClaseIF>

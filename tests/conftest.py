@@ -1,10 +1,12 @@
 import pytest
-from pyspark.sql import SparkSession
+
+from spark.common.session import get_spark
 
 
 @pytest.fixture(scope="session")
 def spark():
-    s = SparkSession.builder.master("local[1]").appName("tests").getOrCreate()
-    s.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+    # The production session, so tests run with its settings (e.g. dynamic
+    # partition overwrite, which keeps Silver rewrites idempotent).
+    s = get_spark("tests", driver_memory="1g")
     yield s
     s.stop()

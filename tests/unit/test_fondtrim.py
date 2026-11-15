@@ -10,36 +10,45 @@ from spark.parsing.fondtrim import (
     write_silver,
 )
 
+# A different value for every metric and quarter, so a column or slot swapped by
+# the parser cannot go unnoticed.
+DISTINCT_METRICS = {
+    "Rentabilidad": {
+        "TrimestreActual": "3.10",
+        "T_1": "2.50",
+        "T_2": "1.10",
+        "T_3": "-0.30",
+    },
+    "Volatilidad": {
+        "TrimestreActual": "11.1",
+        "T_1": "12.2",
+        "T_2": "13.3",
+        "T_3": "14.4",
+    },
+    "RatioTotalGastos": {
+        "TrimestreActual": "0.21",
+        "T_1": "0.22",
+        "T_2": "0.23",
+        "T_3": "0.24",
+    },
+}
 
-def _metrics(values=None):
-    """Quarterly struct with optional nested sub-blocks (Rentabilidad etc.)."""
-    if not values:
+
+def _metrics(metrics=None):
+    """Quarterly blocks as the CNMV nests them; metrics maps metric -> slot -> value."""
+    if not metrics:
         return ""
-    rend = "".join(
-        f"<Rentabilidad_{f}>{values[f]}</Rentabilidad_{f}>"
-        for f in ("TrimestreActual", "T_1", "T_2", "T_3")
-        if f in values
-    )
-    vol = "".join(
-        f"<Volatilidad_{f}>{values[f]}</Volatilidad_{f}>"
-        for f in ("TrimestreActual", "T_1", "T_2", "T_3")
-        if f in values
-    )
-    gastos = "".join(
-        f"<RatioTotalGastos_{f}>{values[f]}</RatioTotalGastos_{f}>"
-        for f in ("TrimestreActual", "T_1", "T_2", "T_3")
-        if f in values
-    )
+
+    def block(metric):
+        return "".join(
+            f"<{metric}_{slot}>{value}</{metric}_{slot}>"
+            for slot, value in metrics.get(metric, {}).items()
+        )
+
     return (
-        "<Rentabilidad>"
-        f"{rend}"
-        "</Rentabilidad>"
-        "<Volatilidad_VL>"
-        f"{vol}"
-        "</Volatilidad_VL>"
-        "<RatioTotalGastos>"
-        f"{gastos}"
-        "</RatioTotalGastos>"
+        f"<Rentabilidad>{block('Rentabilidad')}</Rentabilidad>"
+        f"<Volatilidad_VL>{block('Volatilidad')}</Volatilidad_VL>"
+        f"<RatioTotalGastos>{block('RatioTotalGastos')}</RatioTotalGastos>"
     )
 
 
@@ -110,16 +119,7 @@ def sample_xml(tmp_path):
                     _compartimento(
                         0,
                         [
-                            _clase(
-                                1,
-                                "ES0000000001",
-                                metrics={
-                                    "TrimestreActual": "3.10",
-                                    "T_1": "2.50",
-                                    "T_2": "1.10",
-                                    "T_3": "-0.30",
-                                },
-                            ),
+                            _clase(1, "ES0000000001", metrics=DISTINCT_METRICS),
                             _clase(2, "ES0000000002"),  # no metric sub-blocks
                         ],
                     )
@@ -181,6 +181,13 @@ def test_types_are_cast(parsed):
     assert primera.ValorLiquidativo == Decimal("100.1234")
     assert primera.Rentabilidad_TrimestreActual == Decimal("3.10")
     assert primera.Rentabilidad_T_3 == Decimal("-0.30")
+
+
+def test_every_metric_and_quarter_lands_in_its_own_column(parsed):
+    primera = parsed.filter("NumeroClase = 1").first().asDict()
+    for metric, slots in DISTINCT_METRICS.items():
+        for slot, value in slots.items():
+            assert primera[f"{metric}_{slot}"] == Decimal(value), f"{metric}_{slot}"
 
 
 def test_optional_metric_structs_yield_nulls(parsed):

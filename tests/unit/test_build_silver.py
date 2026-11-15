@@ -77,3 +77,45 @@ def test_incomplete_period_is_skipped(tmp_path):
 def test_pending_and_period_are_mutually_exclusive(tmp_path):
     with pytest.raises(SystemExit):
         main(["--bronze-dir", str(tmp_path), "--pending", "--period", "202601"])
+
+
+class _FakeSpark:
+    def stop(self):
+        pass
+
+
+def _run_pending(monkeypatch, bronze, processed, fail_on=()):
+    """Run `build_silver --pending` with the Spark work replaced by a recorder."""
+    import spark.jobs.build_silver as job
+
+    built = []
+
+    def fake_build_one(spark, periodo, bronze_dir):
+        built.append(periodo)
+        if periodo in fail_on:
+            raise RuntimeError("parse error")
+
+    monkeypatch.setattr(job, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(job, "get_spark", lambda name: _FakeSpark())
+    monkeypatch.setattr(job, "build_one", fake_build_one)
+    monkeypatch.setattr(job, "build_estr", lambda spark: 0)
+    return main(["--bronze-dir", str(bronze), "--pending"]), built
+
+
+def test_failed_period_is_not_marked_and_is_retried(tmp_path, monkeypatch):
+    bronze, processed = _bronze(tmp_path, "202601", "aaa")
+    _bronze(tmp_path, "202602", "bbb")
+
+    code, built = _run_pending(monkeypatch, bronze, processed, fail_on={"202602"})
+
+    assert code == 1
+    assert built == ["202601", "202602"]
+    # Only the period that succeeded is marked, so the next run retries the other
+    assert pending_periods(bronze, processed) == ["202602"]
+
+
+def test_rerun_after_success_builds_nothing(tmp_path, monkeypatch):
+    bronze, processed = _bronze(tmp_path, "202601", "aaa")
+
+    assert _run_pending(monkeypatch, bronze, processed) == (0, ["202601"])
+    assert _run_pending(monkeypatch, bronze, processed) == (0, [])

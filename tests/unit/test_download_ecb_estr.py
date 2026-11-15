@@ -1,6 +1,7 @@
 import pytest
 
 from ingestion.download_ecb_estr import CSV_HEADER, save_key_from_csv
+from tests.unit.fake_http import FakeResponse
 
 KEY = "EST.B.EU000A2QQF16.CR"
 
@@ -38,27 +39,12 @@ def test_series_keys_are_expected():
     assert {name for name, _ in SERIES.values()} == {"estr_ci.csv", "estr_cr.csv"}
 
 
-class _FakeResp:
-    def __init__(self, body: bytes):
-        self._body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def raise_for_status(self):
-        pass
-
-    def iter_content(self, chunk_size):
-        yield self._body
-
-
 def _serve(monkeypatch, body: str):
     import ingestion.download_ecb_estr as mod
 
-    monkeypatch.setattr(mod.requests, "get", lambda *a, **k: _FakeResp(body.encode()))
+    monkeypatch.setattr(
+        mod.requests, "get", lambda *a, **k: FakeResponse(body.encode())
+    )
 
 
 def test_download_series_first_time_saves_and_logs(tmp_path, monkeypatch):
