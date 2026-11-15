@@ -1,268 +1,241 @@
 # Financial Metrics
 
-Last updated: 2026-10-30
+Last updated: 2026-11-15
 
-All metrics are computed on a **weekly return series** (last weekday NAV of each ISO week, non-overlapping returns, annualization factor 52), over a **36-month analysis window**, following the ESMA SRRI methodology adapted to a 3-year lookback. This replaces the earlier daily-return basis (√252).
+This document defines every metric the platform computes, how each one is calculated and what it assumes. It follows the order in which an analyst would read a fund: return, risk, risk-adjusted return and peer ranking, then portfolio, flows and fees, and finally data quality and anomalies. The last sections cover how the metrics were validated, conventions for anyone querying the data, and references.
 
-**Implementation status**: the Silver layer and the dbt models below are built. Metrics are materialized in `data/gold/cnmv.duckdb` and exported to `data/exports/gold_bi` for Power BI.
+All metrics are this project's own calculations, not official CNMV figures.
 
-Data coverage caveat: Bronze/Silver start at 2023-01, so with `as_of_period = 202605` the 36-month window covers ≈ 35.3 months (coverage_ratio ≈ 0.98). Metrics are labeled "36-month" with `coverage_ratio` stored per class.
+## Basis of calculation
 
-## Gold conventions (read before using the data)
+Performance and risk metrics use a weekly return series: the last weekday NAV of each ISO week, non-overlapping weekly returns and an annualization factor of 52. This follows the ESMA methodology for the SRRI risk indicator.
 
-- **Units**: every rate, return, ratio and weight column is a fraction (`0.0123` = 1.23%). Staging converts the CNMV percentage points (`1.23`) to fractions once; the suffix is `_rate`. Format as % in Power BI.
-- **Cumulative rates**: FONDPATRIMDISVAR fees, expenses and net return are cumulative from the previous year-end, not monthly (`fact_fund_period_financials`, one row per closing: June = 6 months, December = 12). Use the `*_annualized_rate` columns to compare closings; never add them across periods.
-- **Flow outliers**: `is_flow_outlier` flags `abs(net_flow_yield) > max_abs_flow_yield`. It does not remove rows; use it to filter chart scales.
-- **Fee outliers**: `is_fee_outlier` flags `charged_expense_yield_rate > max_fee_yield`. Same: flag only.
-- **Size floor**: `meets_size_floor` applies `min_aum_compartment` and `min_participants_compartment`. Informative, does not filter the panorama.
-- **NAV validity**: `fact_nav_daily.is_valid_nav` is false when NAV or AUM is non-positive. Do not chart invalid rows.
-- **Holdings history**: `fact_holdings` keeps every FONDCART period, identified by `date_key` (last day of the period month). The top ten is `position_rank <= 10`; the asset allocation is the sum of `weight` by `clase_if` and `descripcion_if`.
-- **Class coverage**: `mart_fund_class_status` explains why a class is absent from `mart_fund_panorama`; the panorama itself is one row per active compartment through its representative class.
+There are two horizons, both ending at the cut-off date of the run:
+
+- **3 years (36 months)**, used for the peer ranking and the watchlist.
+- **5 years (60 months)**, reported as context. It includes the 2022 rate shock and does not change the selection.
+
+Both horizons use the same formulas and the same quality screen; only the start of the window changes. A class without enough clean history for a horizon gets the status `short_history` for that horizon, and the panorama leaves its values empty instead of showing a shorter period as if it were complete.
+
+The metrics are computed per share class, since each class has its own NAV, and funds are selected per compartment.
 
 ## Return
 
-Status: **implemented (dbt)** · input: `fund_nav_daily` (Silver)
-
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Weekly return** | `ret_w = VL_w / VL_{w-1} - 1` | Only if the previous week exists; otherwise the week is flagged `gap` (non-overlapping returns) |
-| **ret_1y** | return over the last 52 weeks | When window coverage allows |
-| **CAGR (3y)** | `(VL_end / VL_start)^(365 / days_elapsed) - 1` | Window-end vs window-start NAV |
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Weekly return | `ret_w = NAV_w / NAV_{w-1} - 1` | Only when the previous week has a price; otherwise the week counts as a gap |
+| 1-year return | NAV now vs NAV 52 weeks earlier | `ret_1y` |
+| CAGR | `(NAV_end / NAV_start)^(365 / days) - 1` | `cagr_3y` and `cagr_5y` |
 
 ## Risk
 
-Status: **implemented (dbt)** · input: weekly series
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Volatility | `stddev_samp(ret_w) * sqrt(52)` | Annualized; `vol_3y`, `vol_5y` |
+| Maximum drawdown | `max(1 - NAV / running_max(NAV))` | On the daily weekday series, because a weekly series would miss intra-week lows; `max_drawdown_3y`, `max_drawdown_5y` |
+| SRRI-like class | Volatility bands below | Labelled "SRRI-like (3-year, weekly)". The official SRRI uses 5 years and further rules |
 
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Volatility** | `stddev_samp(ret_w) * sqrt(52)` | Sample weekly standard deviation, annualized |
-| **Max Drawdown** | `max(1 - VL / cummax(VL))` | Worst peak-to-trough decline, computed on the **daily weekday VL series** already in Silver. No regulatory convention fixes the drawdown horizon (unlike the SRRI's weekly basis), so the daily series is used; a weekly series would understate intra-week troughs |
-| **SRRI-like class** | 7 risk classes from annualized weekly volatility (cuts below) | Labeled "SRRI-like (3-year, weekly)" — never official SRRI, which uses 5 years |
+Since the 5-year window contains the 3-year one, the 5-year drawdown can never be lower; a dbt test checks it for every class.
 
-SRRI-like cuts (annualized weekly volatility):
-
-| Class | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| SRRI-like class | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |-------|---|---|---|---|---|---|---|
-| Volatility | < 0.5% | 0.5–2% | 2–5% | 5–10% | 10–15% | 15–25% | ≥ 25% |
-
-## Risk-adjusted (Sortino)
-
-Status: **implemented (dbt)** · input: weekly series + €STR index
-
-Weekly minimum acceptable return (varies week by week, from the compounded €STR index — see Risk-free rate): `mar_w = I_w / I_{w-1} - 1`.
-
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **mean_excess** | `avg(ret_w - mar_w) * 52` | Arithmetic mean excess return, annualized |
-| **downside_dev** | `sqrt(avg(least(ret_w - mar_w, 0)^2)) * sqrt(52)` | Downside deviation against the same weekly MAR |
-| **Sortino Ratio** | `mean_excess / downside_dev` | Past risk-adjusted performance filter for the watchlist |
-
-**Reading**: the Sortino ranking is a screen on **past** risk-adjusted performance, not a predictor — persistence at the top is weak (see References). It complements, and is complemented by, the fee filter and the persistence check (future improvements).
-
-Special cases (`sortino_status`):
-- `no_downside`: `downside_dev = 0` and `mean_excess > 0` → **Sortino undefined; no percentile; excluded from the watchlist** (reason surfaced). A flat price does not produce this case — with MAR > 0 a flat week is a negative excess and adds downside — so `downside_dev = 0` with positive mean excess implies a NAV accruing above MAR every week: smoothed valuations or interest accrual. Rewarding it with the top rank is not defensible; near-zero downside is treated the same way via a minimum downside floor, calibrated with data in Phase 0.
-- `stagnant`: `vol = 0` and `mean_excess <= 0` → excluded from the watchlist.
-
-## Peer ranking
-
-Status: **implemented (dbt)** · peer group: CNMV investor vocation (`VocacionInversora`, FONDTRIM)
-
-Morningstar-style percentile within vocation (1 = best), only with ≥ 5 peers:
-
-1. Sort investable peers by Sortino (descending); tied ranks share their rank `c`.
-2. `pct_exact = 100 * (c - 1) / (n - 1)`; `percentile_in_vocation = ceil(pct_exact)` (0 → 1).
-3. `quartile_in_vocation`: 1 if ≤ 25, 2 if ≤ 50, 3 if ≤ 75, else 4.
-
-Percentiles are computed among **investable compartments only** — not comparable to Morningstar published percentiles.
-
-**Known limitation — coarse peer group**: CNMV vocations are broad (e.g. *Renta Fija Euro* mixes durations from ~2 to 10+ years), so peers are heterogeneous. Possible mitigation — percentile within `vocation × SRRI-like class` cells — trades homogeneity for smaller peer groups; kept as a future improvement.
-
-## Concentration
-
-Status: **implemented (dbt)** · input: `fund_holdings` (Silver, per compartment) + compartment AUM
-
-Weights are computed over **reported positions** (not over NAV): lines of the same instrument are aggregated (ISIN if present, else `clase_if + descripcion_if`); `w_i = position_value_i / sum(position_value)` over positions with `value > 0`; non-positive values are counted (`n_nonpositive`), never silently dropped.
-
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **HHI** | `sum(w_i^2)` | Herfindahl-Hirschman Index, range [1/n, 1] |
-| **Effective N** | `1 / HHI` | Number of equally-sized positions with the same concentration |
-| **Top 10 Weight** | sum of the 10 largest position weights | Simple concentration measure |
-| **Coverage Ratio** | `sum(position_value) / compartment_aum` | Completeness of reported holdings vs NAV; flagged outside [0.80, 1.20] |
-
-**Weight base — to decide with Phase 0 data**: weights are computed over reported positions, which may exclude treasury or derivatives, so HHI can overstate true portfolio concentration. A common alternative (used in fund factsheets, source not verified in this session) is weighting over NAV. If `coverage_ratio` ≈ 1 in nearly all compartments, the two bases coincide and the choice is moot; measured median is 0.96 (FONDCART 202512).
+| Annualized volatility | < 0.5% | 0.5–2% | 2–5% | 5–10% | 10–15% | 15–25% | ≥ 25% |
 
 ## Risk-free rate
 
-Status: **implemented (dbt)** · input: `estr_daily` (Silver)
+The minimum acceptable return for the Sortino ratio is the weekly change of the ECB's compounded €STR index: `mar_w = I_w / I_{w-1} - 1`, where `I_w` is the last index value on or before each week end. It moves week by week with the actual short-term rate, and using the index ratio avoids choosing a day-count convention.
 
-Two levels:
+A constant rate would not work here: since 2020 €STR has gone from below zero to about 4% and back toward 2%.
 
-- **Weekly MAR (core, feeds Sortino)**: `mar_w = I_w / I_{w-1} - 1`, where `I_w` is the last compounded €STR index observation on or before each week end (single as-of join against `estr_daily`). The MAR therefore varies week by week with the actual short rate, and no annualization convention (ACT/360 vs 365) is introduced — the index ratio is convention-free.
-- **Window rate (reporting only)**: `rf_window = (I_end / I_start)^(365 / dc) - 1`, where `I_start` / `I_end` bracket the analysis window and `dc` is calendar days between them. Used to report the window risk-free level; not to build `mar_w`.
+## Sortino ratio
 
-Context: over the current window €STR moved from ≈ 3% up to ≈ 4% (Sep 2023) and back down toward 2% — the earlier static 2.5% approximation is **superseded**.
+| Metric | Formula |
+|--------|---------|
+| Mean excess return | `avg(ret_w - mar_w) * 52` |
+| Downside deviation | `sqrt(avg(min(ret_w - mar_w, 0)^2)) * sqrt(52)` |
+| Sortino ratio | `mean_excess / downside_dev` |
 
-## Flows and AUM bridge
+Two cases are excluded from the ranking, with the reason recorded in `sortino_status`:
 
-Status: **implemented (dbt)** · input: `fund_nav_daily` (Silver, daily) + `fund_period_financials` (Silver, cross-check)
+- `no_downside`: the fund never had a week below the risk-free rate (or almost never, below `min_downside_dev`) and has a positive excess return. A flat price cannot cause this, because a flat week is already below a positive rate. It points to smoothed valuations or interest accrual, and giving it the top rank would not be defensible.
+- `stagnant`: zero volatility and no excess return.
 
-The bridge is computed per class and day, then aggregated to month/quarter. `units_t` is a derived analytical unit, not an official CNMV figure.
+The Sortino ranking screens past performance. Persistence at the top of fund rankings is weak (see the S&P scorecard in References), so it does not predict future results.
 
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Derived units** | `units_t = aum_t / nav_t` | Analytical units implied by AUM and NAV |
-| **Market effect** | `units_{t-1} * (nav_t - nav_{t-1})` | AUM change attributable to NAV |
-| **Net flows** | `(units_t - units_{t-1}) * nav_t` | AUM change attributable to units |
-| **Delta AUM** | `aum_t - aum_{t-1}` | Must equal `market_effect + net_flows` within tolerance |
-| **Market growth** | `market_effect / average_aum` | Return-driven growth in `fact_compartment_monthly` |
-| **Net flow yield** | `net_flows / average_aum` | Flow-driven growth; same column used by the panorama |
-| **Outflow share** | `min(net_flows, 0) / average_aum` | Intensity of net outflows |
-| **Month-end AUM (compartment)** | sum over classes of the NAV-day AUM on the last reported day of the month | A class that does not report on that day is missing from the sum; this affects ~0.2% of compartment-months and is accepted as a limitation |
-| **Participant retention** | `holders_t / holders_{t-1}` | Proxy only; not gross retention. `holders` is the sum over classes of the last reported value of each month (a participant in two classes counts twice, so it is an upper bound) |
-| **Corporate-action AUM change** | `delta_aum` on days with `is_capital_change` or `is_jump` | Reported separately in `corporate_action_delta_aum`. Monthly `net_flows`, `market_effect` and `delta_aum` exclude those days, so `net_flows + market_effect = delta_aum` holds (test `assert_monthly_flows_identity`) |
-| **AUM retention** | `aum_t / aum_{t-1}` | Includes market effect |
+## Peer ranking
 
-**Limitations:** only **net** subscriptions/redemptions exist; there is no gross churn. Mergers and class changes can break the bridge and are flagged (`aum_flow_mismatch`). `Suscripciones_Reembolsos_Netos` is cumulative from the previous year-end: accumulate daily `net_flows` from that close and compare with the YTD percentage at each quarter. Do not compare a single quarter with a YTD figure.
+Peers are the compartments with the same CNMV investor vocation (`VocacionInversora`). The ranking follows Morningstar's method and needs at least 5 peers:
 
-## Fees and income quality (FONDPATRIMDISVAR)
+1. Sort the peers by Sortino, best first; ties share their rank `c`.
+2. `pct_exact = 100 * (c - 1) / (n - 1)` and `percentile_in_vocation = ceil(pct_exact)`, with 0 shown as 1.
+3. Quartile 1 up to 25, 2 up to 50, 3 up to 75, otherwise 4.
 
-Status: **implemented (dbt)** · input: `fund_period_financials` (Silver) + `fund_quarterly` (FONDTRIM, cross-check)
+Percentiles are computed among the investable compartments only, so they are not comparable with Morningstar's published ones.
 
-FONDPATRIMDISVAR is documented as quarterly but the downloaded archives only contain 06/12; it gives **percentages of average daily patrimony, cumulative since the previous year-end**. XML expenses are negative. Do not mix these accumulated percentages with annual rates from FONDTRIM. In Gold these columns carry the `_ytd` suffix (`core_fee_yield_ytd_rate`, `charged_expense_yield_ytd_rate`, `net_return_ytd_rate`, `fee_revenue_proxy_ytd`, etc.) and are only populated when `is_closing_month = true`. Field abbreviations: `CGES`=management fee, `CDEP`=depositary fee, `GSE`=external services, `OGGC`=other management expenses, `OGR`=other charged expenses, `CDFAV`=discount commissions, `CRETRO`=retroceded commissions, `OING`=other income.
+CNMV vocations are broad: *Renta Fija Euro*, for example, mixes durations from about 2 to more than 10 years. Ranking within vocation and risk class would make peers more alike at the cost of smaller groups; it is left as a possible improvement.
 
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Gross expenses** | `GR = CGES + CDEP + GSE + OGGC + OGR` | XML sign; keep negative in Silver |
-| **Income** | `ING = CDFAV + CRETRO + OING` | Discounts, retrocessions, other income |
-| **Net return** | `RN = RG − GR + ING` (PDF); with XML signs, `GR` is negative, so `RN = RG + GR + ING` | Source identity |
-| **Core fee yield** | `abs(CGES + CDEP)` | Management + depositary fees |
-| **Other expense yield** | `abs(GSE + OGGC + OGR)` | Other recurring/non-recurring expenses |
-| **Expense ratio** | `abs(GR)` | Total expenses over average patrimony |
-| **Income yield** | `abs(ING)` | Income over average patrimony |
-| **Core fee share** | `core_fee_yield / charged_expense_yield` | Share of expenses that is management/custody |
-| **Fee revenue proxy (YTD)** | `average_patrimony * (management fee + depositary fee)` | `fee_revenue_proxy`: total fee pool of a fund (manager plus depositary), with average patrimony and the FONDPATRIMDISVAR rates; not accounting revenue. FONDTRIM's `ComisionGestion` is **not** a direct cross-check: its value is about half the annual fee realised (see Independent validation). |
-| **Management fee revenue (YTD)** | `average_patrimony * abs(ComisionGestion)` | `management_fee_revenue` / `_annualized`: estimated revenue of the **manager** (the depositary fee goes to the depositary, not to the manager). Gross of retrocessions to distributors and without costs: it is a market-mapping proxy, not a valuation input. |
-| **Management fee yield (annualized)** | `management_fee_revenue_annualized / sum(average_patrimony)` | `management_fee_yield_annualized_rate` by manager group: average management fee charged, weighted by patrimony. |
-| **Group growth split** | `net_flows / average_aum` and `market_effect / average_aum` | `fact_manager_group_monthly`: organic growth (clients' money) vs market growth, summed from the compartments, without corporate actions. |
-| **HHI fee (YTD)** | `sum((mgmt_fee_revenue_i / total_mgmt_fee_revenue)^2)` | Concentration of management-fee revenue by manager group (`hhi_fee`) |
-| **Top-5 fee share (YTD)** | sum of the 5 largest management-fee shares | `top5_fee_share`. Using the management fee only lowers the total fee pool by ~7-8% and leaves the concentration almost unchanged (HHI 0.0942 vs 0.0941 at Dec-2025) |
+## Portfolio concentration
 
-**Limitations:** no separate success fee exists; `GastosRepercutidos` is the total and does not isolate it. There is no fee-base field: the source defines all variation fields over average daily patrimony. `TotalPatrimonio` is the quarter-end patrimony, not average daily patrimony; the fee-revenue proxy is for ranking, not accounting. `hhi_fee` needs a documented grouping choice (`Gestora` vs `GrupoGestora`).
+Weights are computed over the reported positions. Lines of the same instrument are added together (by ISIN, or by asset type and description when there is no ISIN), and `w_i = position_value_i / sum(position_value)` over positions with a positive value. Non-positive positions are counted in `n_nonpositive`.
 
-## Data quality and reconciliation
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| HHI | `sum(w_i^2)` | Herfindahl-Hirschman index, between 1/n and 1 |
+| Effective number of positions | `1 / HHI` | |
+| Top-10 weight | Sum of the 10 largest weights | |
+| Coverage ratio | `sum(position_value) / compartment AUM` | Flagged outside 0.80–1.20 |
 
-Status: **implemented (dbt)** · input: FONDMENS + FONDTRIM at common semiannual closes
+Reported positions may leave out cash or derivatives, which would overstate concentration. In practice the difference is small: the median coverage ratio is 0.96 (FONDCART 202512).
 
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| **Reconciliation error** | `abs(aum_fondmens - aum_fondtrim) / aum_fondmens` | Same date/period; flag, do not auto-fail |
-| **Coverage** | eligible classes / active classes | Share with usable metrics |
-| **Gap share** | classes with `gap` / eligible classes | Missing-week incidence |
-| **Stale share** | classes with `stale_nav` / eligible classes | Stale price incidence |
-| **Fee period status** | `ok` / `missing` | Whether FONDPATRIMDISVAR has a row for that period (observed 06/12) |
-| **DQ status** | rule-based `pass` / `warn` / `fail` | Aggregates thresholds and flags |
+## Flows and the AUM bridge
 
-Thresholds live in dbt `vars`: `max_recon_error`, `max_outflow_yield`, `max_fee_yield`, `max_abs_flow_yield`, `min_aum_compartment`, `min_participants_compartment`, `max_hhi_asset_type`. `max_abs_flow_yield`, `max_fee_yield` and the size floors feed Gold flags; they do not remove rows. `max_hhi_asset_type` remains unused until an asset-type portfolio model exists.
+The bridge splits each daily change in assets into what comes from prices and what comes from investors, per class, and then adds it up by month.
+
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Derived units | `units_t = aum_t / nav_t` | Implied by AUM and NAV; not a CNMV figure |
+| Market effect | `units_{t-1} * (nav_t - nav_{t-1})` | Change explained by the price |
+| Net flows | `(units_t - units_{t-1}) * nav_t` | Change explained by subscriptions and redemptions |
+| Change in AUM | `aum_t - aum_{t-1}` | Equals market effect plus net flows; tested |
+| Market growth | `market_effect / average_aum` | |
+| Net flow yield | `net_flows / average_aum` | |
+| Outflow share | `min(net_flows, 0) / average_aum` | |
+| Participant retention | `holders_t / holders_{t-1}` | A proxy: an investor in two classes counts twice |
+| AUM retention | `aum_t / aum_{t-1}` | Includes the market effect |
+
+Days with mergers, capital changes or jumps (`is_capital_change`, `is_jump`) are reported apart in `corporate_action_delta_aum` and kept out of the monthly flows, so the bridge still balances.
+
+Limitations:
+
+- The CNMV only publishes net subscriptions and redemptions, so gross churn cannot be measured.
+- Month-end compartment AUM adds the last reported AUM of each class. A class that does not report on that day is missing from the sum, which affects about 0.2% of compartment-months.
+- FONDPATRIMDISVAR reports flows as a cumulative year-to-date percentage, so the comparison with the daily bridge is done on the year-to-date total at each closing.
+
+## Fees and income
+
+FONDPATRIMDISVAR reports expenses and income as percentages of average daily assets, cumulative since the previous year-end. A June figure therefore covers six months and a December figure twelve. The Gold tables keep that year-to-date meaning and add annualized versions (`*_annualized_rate`) for comparing closings. Expenses come with a negative sign in the source.
+
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| Gross expenses | `GR = CGES + CDEP + GSE + OGGC + OGR` | Management, depositary, external services, other management and other charged expenses |
+| Income | `ING = CDFAV + CRETRO + OING` | Discount commissions, retroceded commissions, other income |
+| Net return | `RN = RG + GR + ING` | Source identity, with expenses negative; tested |
+| Core fee yield | `abs(CGES + CDEP)` | Management and depositary fees |
+| Other expense yield | `abs(GSE + OGGC + OGR)` | |
+| Expense ratio | `abs(GR)` | |
+| Income yield | `abs(ING)` | |
+| Core fee share | Core fee yield / expense ratio | Share of costs that is management and custody |
+| Fee revenue estimate | `average_assets * (management fee + depositary fee)` | `fee_revenue_proxy`: the fund's total fee pool |
+| Manager revenue estimate | `average_assets * management fee` | `management_fee_revenue`: before payments to distributors and without costs |
+| Management fee yield by group | Annualized management revenue / average assets | Weighted by assets |
+| Fee concentration | `sum(share_i^2)` of management revenue by manager group | `hhi_fee`, plus `top5_fee_share` |
+
+Using the management fee alone for concentration lowers the fee pool by about 7–8% and leaves the HHI almost unchanged (0.0942 vs 0.0941 in December 2025).
+
+These revenue figures are estimates for mapping the market and ranking managers, and are not accounting revenue. There is no separate success fee in the source, and FONDTRIM's management fee rate cannot be used as a cross-check (see Validation).
+
+## Data quality
+
+| Measure | Definition | Where |
+|--------|---------|-------|
+| Reconciliation error | `abs(aum_fondmens - aum_fondtrim) / aum_fondmens`, same class and date | Above `max_recon_error` it becomes a `recon_error` anomaly |
+| Coverage ratio | Weeks with a valid NAV / expected weeks | Per class and horizon |
+| Gap share | Weeks with a gap / weeks with a NAV | Per class |
+| Stale share | Zero-return weeks / weeks with a return | Per class |
+| Class status | `eligible`, `quarantined` with a reason, or `short_history` | Per class and horizon, in `mart_fund_class_status` |
+
+Every threshold is a dbt variable in `dbt_project.yml` with a comment on where its value comes from. Flags such as `is_flow_outlier`, `is_fee_outlier` and `meets_size_floor` mark rows without removing them.
 
 ## Anomalies
 
-Status: **implemented (dbt)** · input: NAV, fees, flows, concentration, coverage, reconciliation
+`fact_fund_anomalies` has one row per flag: compartment, class (empty for compartment-level flags), date and type.
 
-`fact_fund_anomalies` is a typed union, one row per `compartment_id × class_id × date_key × anomaly_type` (`class_id` is null for compartment-level anomalies). `date_key` links to `dim_date`:
-
-| Field | Meaning |
+| Field | Content |
 |-------|---------|
 | `anomaly_type` | `nav_extreme_return`, `nav_gap`, `nav_stale`, `dormant`, `coverage_lt_min`, `stale_end`, `short_history`, `recon_error`, `fee_outlier`, `fee_period_missing`, `flow_extreme_outflow` |
-| `severity` | `info`, `warn`, `high` |
-| `metric_value` | Observed value |
-| `threshold` | Rule threshold |
-| `source` | Silver table / source dataset |
-| `description` | Human-readable explanation |
+| `severity` | `info`, `warn` or `high` |
+| `metric_value`, `threshold` | Observed value and the rule it broke |
+| `source`, `description` | Where the data came from, and a readable explanation |
 
-**Limitations:** anomaly signals are analytical, not regulatory findings. `high` requires manual review and never silently removes a fund.
+An anomaly is an analytical signal for manual review and does not imply any regulatory finding. A `high` flag never removes a fund on its own.
 
-## Blocked Metrics (require benchmark)
+## Validation
 
-| Metric | Formula | Blocker |
-|--------|---------|---------|
-| **Jensen's Alpha** | `fund_return - (risk_free + beta * (market_return - risk_free))` | Benchmark selection (IBEX 35, MSCI World, or CNMV fund proxy) |
-| **Beta** | `cov(fund_returns, market_returns) / var(market_returns)` | Benchmark selection |
-| **Tracking Error** | `stddev(fund_returns - benchmark_returns)` | Benchmark selection |
-| **Active Share** | `sum(abs(weight_fund - weight_benchmark)) / 2` | Benchmark portfolio |
-
-## Future metrics (out of current scope)
-
-| Metric | Requirement |
-|--------|-------------|
-| **Turnover Ratio (portfolio-derived)** | `sum(abs(w_t - w_{t-1})) / 2` — needs FONDDERI or multi-period FONDCART; FONDPATRIMDISVAR already provides `IndiceRotacionCarteraActual`, which should be preferred and documented as the source metric |
-| **Sharpe Ratio** | Easy extension of the Sortino pipeline (36 months) |
-| **Calmar Ratio** | `CAGR / max_drawdown` — planned as a future metric alongside Sharpe |
-| **Official SRRI (5-year)** | Requires extending history to 5 years |
-
-## Independent validation
-
-The metrics are recomputed from the raw Silver data with code that shares nothing with the dbt SQL, and compared against official CNMV figures. Both scripts are in `tests/integration/` and are run by hand after `dbt build` on the real data (they need the full Silver and the dbt output):
+Two scripts in `tests/integration/` recompute the metrics from Silver with pandas, sharing no code with the dbt SQL, and compare them with the dbt output and with official CNMV figures. They need the full data, so they are run by hand after `dbt build`:
 
 ```bash
 python tests/integration/validate_class_metrics.py . data/gold/cnmv.duckdb
 python tests/integration/validate_against_official.py . data/gold/cnmv.duckdb
 ```
 
-| Check | Result (cut-off 202605) |
+| Check | Result (cut-off 202608) |
 |---|---|
-| Volatility, excess return, downside deviation, Sortino, CAGR, 1-year return, maximum drawdown, number of weeks and returns, recomputed for all 3,751 classes | Identical, maximum relative error 3·10⁻¹⁵ |
-| Peer percentile (`pct_exact`) recomputed from the Sortino ranking | Identical (1,105 compartments) |
-| Official quarterly return (FONDTRIM) vs return from the daily NAV, 12,715 observations of 1,459 classes | Median difference 0.003 pp; 97.6 % within 0.05 pp; 0.8 % above 2 pp (distribution classes and corporate actions) |
-| Official quarterly volatility vs daily-return deviation | Official = daily deviation × √260 (median ratio 1.001); it is not comparable one-to-one with the weekly 36-month volatility of the project |
-| Official quarterly TER | Quarterly, not annual: annualised realised expenses / (TER × 4) has a median of 1.04 |
-| Management fee realised (FONDPATRIMDISVAR, December, cumulative for the year) vs FONDTRIM `ComisionGestion` | Realised / FONDTRIM has a median of 1.98: the FONDTRIM field behaves like a half-year rate. It is not used in any metric |
-| Net flows vs official year-to-date flow | Test `assert_flow_ytd_matches_official`: 98.5 % within 5 pp |
+| All 3-year class metrics recomputed for 3,751 classes | Identical, maximum relative error 3·10⁻¹⁵ |
+| Peer percentile recomputed from the Sortino ranking | Identical for 1,112 compartments |
+| Official quarterly return (FONDTRIM) vs return from the daily NAV: 21,767 quarters of 1,463 classes, 2020–2026 | Median difference 0.003 pp; 97.3% within 0.05 pp; 0.9% above 2 pp, from distribution classes and corporate actions |
+| Official quarterly volatility vs daily-return deviation | Official = daily deviation × √260 (median ratio 1.002). Not directly comparable with the project's weekly volatility |
+| Realised management fee (FONDPATRIMDISVAR, December 2025) vs FONDTRIM `ComisionGestion` | Median ratio 1.98: the FONDTRIM field behaves like a half-year rate, so no metric uses it |
+| Net flows vs the official year-to-date flow | 98.5% of compartments within 5 pp (dbt test `assert_flow_ytd_matches_official`) |
 
-Two defects were found and fixed by this process:
+This process found and fixed two defects:
 
-- **Downside deviation overstated the Sortino.** DuckDB's `least(NULL, 0)` returns 0, so weeks without a return counted as zero downside and the average had too large a denominator. Eligible classes were affected by a uniform 0.32 %; the ranking, percentiles, stars and watchlist did not change. A regression test (`assert_downside_dev_ignores_missing_weeks`) now recomputes it with an explicit sum and count.
-- **The "distribution" flag was wrong.** It marked days when NAV and AUM fell in the same proportion with unchanged participants, which also happens on any sharp market drop: 72 % of the events fell on 10 dates (for example 4 April 2025, when 20 % of classes were marked). The flag fed no metric and has been removed. Real distribution classes are identified with `Beneficio_Dividendo_Bruto` (see Methodological Notes).
+- **The downside deviation was understated.** In DuckDB `least(NULL, 0)` returns 0, so weeks without a return counted as weeks without losses. That inflated every eligible Sortino by about 0.32% without changing the ranking. A regression test now recomputes it with an explicit sum and count.
+- **A "distribution" flag fired on market crashes.** It marked days when NAV and AUM fell in the same proportion with unchanged participants, which also happens on any sharp market drop: 72% of the events fell on 10 dates. It fed no metric and was removed.
 
-## Methodological Notes
+## Known limitations
 
-- **Unit of measurement**: share class (own NAV); **selection unit**: compartment.
-- All metrics are internal analysis, not official CNMV calculations.
-- Every metric must document its assumptions and data source; formulas must not change silently.
-- Weekly volatility on the 3-year window is noisy; ranking sensitivity (window ±6 months, weekly MAR vs window-constant MAR) must be recorded when the watchlist is built.
-- Dividends: for **accumulation classes** (the overwhelming majority), the published VL already embeds reinvested returns, so VL-based returns are total returns. The issue only affects **distribution classes**, whose VL drops at each payout — measured on FONTRIM 202512 `Beneficio_Dividendo_Bruto`: 81 of 3,069 classes (2.6%) report a gross dividend; among them the median dividend/VL is 1.3% (p90 2.4%, max 4.5%), concentrated in international equity and mixed vocations — exactly where the price-return distortion would matter. Phase 0 check: identify classes showing periodic VL drops compatible with a payout; if few, flag and exclude them from the watchlist rather than adjusting returns.
+- **Distribution classes.** Most classes accumulate income, so their NAV already includes it and NAV returns are total returns. Distribution classes are the exception: their NAV drops at each payout. In FONDTRIM 202512, 81 of 3,069 classes (2.6%) reported a dividend, with a median of 1.3% of NAV. Their returns are not adjusted and are slightly understated.
+- **Noise.** A 3-year weekly series has about 156 observations, so small differences between close peers should not be over-read.
+- **Survivorship.** Funds that were merged or liquidated before the cut-off are not ranked.
+
+## Metrics that need a benchmark
+
+| Metric | Formula |
+|--------|---------|
+| Jensen's alpha | `fund_return - (risk_free + beta * (market_return - risk_free))` |
+| Beta | `cov(fund, market) / var(market)` |
+| Tracking error | `stddev(fund - benchmark)` |
+| Active share | `sum(abs(weight_fund - weight_benchmark)) / 2` |
+
+They are not computed until a benchmark is chosen (IBEX 35, MSCI World or a CNMV fund proxy). Possible additions that need no benchmark are the Sharpe and Calmar ratios.
+
+## Conventions for querying the data
+
+- Every rate, return, ratio and weight is a fraction: `0.0123` means 1.23%. Columns with rates end in `_rate`.
+- FONDPATRIMDISVAR figures are year-to-date. Compare closings with the `*_annualized_rate` columns and never add them across periods.
+- `fact_nav_daily.is_valid_nav` is false when NAV or AUM is not positive; leave those rows out of charts.
+- `fact_holdings` keeps every FONDCART closing. The top ten positions are `position_rank <= 10`, and the asset allocation is the sum of `weight` by `clase_if` and `descripcion_if`.
+- `mart_fund_panorama` has one row per active compartment, through its representative class; `mart_fund_class_status` explains why any class is missing from it.
 
 ## References
 
-All formulas above back to these sources. Labels: **verified** = located and read; **to verify** = cited from memory, pending check.
+### Risk and performance methodology
+- [ESMA/CESR 10-673: SRRI methodology](https://www.esma.europa.eu/sites/default/files/library/2015/11/10_673.pdf). Weekly returns, annualization and risk classes.
+- [CESR 09-716: SRRI consultation draft](https://www.esma.europa.eu/sites/default/files/library/2015/11/09_716.pdf). 3-year window with weekly returns.
+- [SRRI cut-off table (UCLouvain)](https://dial.uclouvain.be/pr/boreal/en/object/boreal%3A254713/datastream/PDF_01/view). The seven volatility bands.
 
-### Risk-adjusted performance methodology
-- [ESMA/CESR 10-673 — SRRI methodology](https://www.esma.europa.eu/sites/default/files/library/2015/11/10_673.pdf) (verified) — weekly non-overlapping returns, m=52 annualization, volatility formula, risk classes.
-- [CESR 09-716 — SRRI consultation draft](https://www.esma.europa.eu/sites/default/files/library/2015/11/09_716.pdf) (verified) — 3-year window with weekly returns.
-- [SRRI cut-off table (UCLouvain)](https://dial.uclouvain.be/pr/boreal/en/object/boreal%3A254713/datastream/PDF_01/view) (verified) — the 7 volatility cut-offs.
-
-### Peer comparison & rankings
-- [Morningstar Rating for Funds](https://tw.morningstar.com/tw/news/119348/the-morningstar-rating-for-funds.aspx) (verified) — 36-month continuous history requirement; comparison within category.
-- [Morningstar — Absolute, Percentile and Fractional Ranks](https://morningstardirect.morningstar.com/clientcomm/DueDiligenceReports/Morningstar_Methodology_Ranking_Calculations.pdf) (verified) — percentile/quartile formula; no rating with < 5 distinct portfolios.
-- [Morningstar — Performance Quartile (within Category)](https://awgmain.morningstar.com/webhelp/glossary_definitions/mutual_fund/mfglossary_performance_quartile.htm) (verified).
-- [Morningstar — Oldest Share Class Methodology](https://morningstardirect.morningstar.com/clientcomm/Oldest_Share_Class_Methodology.pdf) (verified) — ordered criteria for representative-class selection.
-- [S&P — Fleeting Alpha: the challenge of consistent outperformance](https://www.spglobal.com/spdji/en/research/article/fleeting-alpha-the-challenge-of-consistent-outperformance) (verified) — largest-asset class as representative.
-- [S&P — Europe Persistence Scorecard Year-End 2025](https://www.spglobal.com/spdji/en/documents/spiva/persistence-scorecard-europe-year-end-2025.pdf) (verified) — survivorship and persistence caveats.
+### Peer comparison and rankings
+- [Morningstar Rating for Funds](https://tw.morningstar.com/tw/news/119348/the-morningstar-rating-for-funds.aspx). 36 months of continuous history; comparison within category.
+- [Morningstar: Absolute, Percentile and Fractional Ranks](https://morningstardirect.morningstar.com/clientcomm/DueDiligenceReports/Morningstar_Methodology_Ranking_Calculations.pdf). Percentile and quartile formula; no rating below 5 portfolios.
+- [Morningstar: Performance Quartile within Category](https://awgmain.morningstar.com/webhelp/glossary_definitions/mutual_fund/mfglossary_performance_quartile.htm).
+- [Morningstar: Oldest Share Class Methodology](https://morningstardirect.morningstar.com/clientcomm/Oldest_Share_Class_Methodology.pdf). Criteria for choosing a representative class.
+- [S&P: Fleeting Alpha](https://www.spglobal.com/spdji/en/research/article/fleeting-alpha-the-challenge-of-consistent-outperformance). Largest class as representative.
+- [S&P: Europe Persistence Scorecard, year-end 2025](https://www.spglobal.com/spdji/en/documents/spiva/persistence-scorecard-europe-year-end-2025.pdf). Survivorship and persistence.
 
 ### Concentration
-- [State Street — Concentration is up, diversification isn't gone](https://www.ssga.com/us/en/intermediary/insights/concentration-is-up-diversification-isnt-gone) (verified) — HHI, effective number = 1/HHI, top-10 weight.
-- [Nasdaq — All about index concentration](https://www.nasdaq.com/articles/all-about-index-concentration) (verified) — HHI as sum of squared weights.
+- [State Street: Concentration is up, diversification isn't gone](https://www.ssga.com/us/en/intermediary/insights/concentration-is-up-diversification-isnt-gone). HHI, effective number and top-10 weight.
+- [Nasdaq: All about index concentration](https://www.nasdaq.com/articles/all-about-index-concentration). HHI as the sum of squared weights.
 
-### Risk-free rate (€STR)
-- [ECB — €STR overview (compounded index)](https://www.ecb.europa.eu/stats/financial_markets_and_interest_rates/euro_short-term_rate/html/eurostr_overview.en.html) (verified).
-- [ECB — Series `EST.B.EU000A2QQF08.CI`](https://data.ecb.europa.eu/data/datasets/EST/EST.B.EU000A2QQF08.CI) (verified) — compounded €STR index used as input.
-- [ECB — Compounded €STR calculation rules](https://ecb.eu/paym/interest_rate_benchmarks/WG_euro_risk-free_rates/shared/pdf/ecb.Compounded_euro_short-term_rate_calculation_rules.en.pdf) (verified).
+### Risk-free rate
+- [ECB: €STR overview](https://www.ecb.europa.eu/stats/financial_markets_and_interest_rates/euro_short-term_rate/html/eurostr_overview.en.html).
+- [ECB: series EST.B.EU000A2QQF08.CI](https://data.ecb.europa.eu/data/datasets/EST/EST.B.EU000A2QQF08.CI). The compounded index used here.
+- [ECB: compounded €STR calculation rules](https://ecb.eu/paym/interest_rate_benchmarks/WG_euro_risk-free_rates/shared/pdf/ecb.Compounded_euro_short-term_rate_calculation_rules.en.pdf).
 
-### Fees and revenue quality
-- [Morningstar (Kinnel, 2016) — How Fund Fees are the Best Predictor of Returns](https://morningstar.co.uk/uk/news/149421/how-fund-fees-are-the-best-predictor-of-returns.aspx) (verified).
-- [Morningstar (Kinnel, 2010) — How Expense Ratios & Star Ratings Predict Success](https://morningstar.co.uk/uk/news/66497/how-expense-ratios--star-ratings-predict-success.aspx) (verified).
-- [CNMV — Las principales comisiones de los fondos de inversión](https://www.cnmv.es/portal/inversor/fondos-comisiones) (verified).
-- [CNMV Circular 4/2008 — expense ratio in periodic reports](https://vlex.es/vid/trimestral-semestral-posicion-43113951) (verified, divulgative).
+### Fees
+- [Morningstar (Kinnel, 2016): How Fund Fees are the Best Predictor of Returns](https://morningstar.co.uk/uk/news/149421/how-fund-fees-are-the-best-predictor-of-returns.aspx).
+- [Morningstar (Kinnel, 2010): How Expense Ratios and Star Ratings Predict Success](https://morningstar.co.uk/uk/news/66497/how-expense-ratios--star-ratings-predict-success.aspx).
+- [CNMV: Las principales comisiones de los fondos de inversión](https://www.cnmv.es/portal/inversor/fondos-comisiones).
+- [CNMV Circular 4/2008: expense ratio in periodic reports](https://vlex.es/vid/trimestral-semestral-posicion-43113951).
 
-### From memory, to verify
-Sortino, F. and Price, L. (1994), *Performance Measurement in a Downside Risk Framework* · Sharpe, W. (1994), *The Sharpe Ratio* · Lo, A. (2002), *The Statistics of Sharpe Ratios* · Young (1991) on Calmar · Carhart, M. (1997), *On Persistence in Mutual Fund Performance* · Herfindahl (1950) / Hirschman (1945), origin of HHI · Bacon, C., *Practical Portfolio Performance Measurement and Attribution*.
+### Further reading
+Sortino and Price (1994), *Performance Measurement in a Downside Risk Framework*. Sharpe (1994), *The Sharpe Ratio*. Lo (2002), *The Statistics of Sharpe Ratios*. Carhart (1997), *On Persistence in Mutual Fund Performance*. Bacon, *Practical Portfolio Performance Measurement and Attribution*.

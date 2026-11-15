@@ -7,9 +7,6 @@ __pycache__/
 .dbt/
 logs/
 target/
-PLAN.md
-ROADMAP.md
-dbt_plan.md
 .opencode/
 tests/fixtures/silver
 dbt_packages/
@@ -18,3 +15,7 @@ bi/power_bi_theme.json
 .vscode/
 airflow/.env
 airflow/logs/
+dbt/.user.yml
+AGENTS.md
+docs/dbt_docs/
+/.env

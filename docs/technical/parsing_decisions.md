@@ -18,7 +18,7 @@ even when the real data usually has many elements.
 ## Unpivot the 31 daily columns with `stack`
 
 **Problem.** FONDMENS publishes `VL_Dia1..31`, `Participes_Dia1..31`,
-`Patrimonio_Dia1..31` — 93 columns per class instead of one row per day.
+`Patrimonio_Dia1..31`: 93 columns per class instead of one row per day.
 
 **Decision.** One `stack(31, ...)` expression unpivots to
 `(day, VL, Participes, Patrimonio)` rows. Day 29-31 of short months are dropped.
@@ -45,7 +45,7 @@ belongs here because the shape is imposed by the source, not by analysis.
 `write_silver`. `EXPECTED_SCHEMA` is asserted after the cast.
 
 **Why.** Silver is the typed contract every consumer (validate_silver, dbt, notebooks)
-reads. dbt should never cast — if a column has the wrong type, Silver is broken.
+reads. dbt should never cast: if a column has the wrong type, Silver is broken.
 
 ## `ETF == "YES"` → boolean
 
@@ -92,7 +92,7 @@ on every class row; grain is `Tipo + NumeroRegistro + NumeroCompartimento +
 NumeroClase + FechaDatos`.
 
 **Why.** A class-month row carries everything a dbt model needs without joins
-(that join would be needed anyway — dbt models group by compartment). Storage
+(that join would be needed anyway, because dbt models group by compartment). Storage
 costs nothing at 18k rows per closure.
 
 ## fund_quarterly: quarterly metric structs flattened, XSD names kept
@@ -112,7 +112,7 @@ because the columns are already univocal without the `_VL` suffix.
 ## fund_holdings: raw line grain, no aggregation in Silver
 
 **Problem.** FONDCART repeats the same instrument inside one compartment
-(2.879 same-instrument line groups in the six 2023-2025 closures) and some
+(2,879 same-instrument line groups in the six 2023-2025 closures) and some
 compartimentos have no `InversionesFinancieras` at all.
 
 **Decision.** One row per raw position line. Compartimentos with no holdings
@@ -121,29 +121,26 @@ asserted unique; a repeated line is not treated as a data error.
 
 **Why.** The aggregation (per instrument, weight share) follows a portfolio
 definition the source does not constrain (the per-instrument aggregation is
-defined in the dbt plan); doing it in Silver
-would freeze that choice into the storage layer.
+defined in dbt); doing it in Silver would freeze that choice into the storage
+layer.
 
-## Gate cadence contract: FONDTRIM/FONDCART semiannual, FONDPATRIMDISVAR nominal quarterly
+## Cadence contract: semiannual 06/12 for FONDTRIM, FONDCART and FONDPATRIMDISVAR
 
-**Problem.** The project plan (v0.3) assumed quarterly closures for
-FONDTRIM/FONDCART; the Bronze zips disprove that (202403 and 202303 zips don't
-contain either dataset). The FONDPATRIMDISVAR explanatory document says it is
-quarterly (03/06/09/12), but every downloaded CNMV archive from 2023 to 2025
-(six closures) contains FONDPATRIMDISVAR only in June and December. The XSD
-header for FONDTRIM says "Datos mensuales" but the published cadence is
-half-yearly.
+**Problem.** The CNMV published FONDTRIM, FONDCART and FONDPATRIMDISVAR quarterly
+(03/06/09/12) until 2022 and only in June and December from 2023; the 202109
+archive contains none of the three. The FONDPATRIMDISVAR explanatory document still
+describes a quarterly cadence, and the FONDTRIM XSD header says "Datos mensuales".
 
-**Decision.** `validate_silver` gates `trim_period_months` to 06/12 for
-FONDTRIM/FONDCART and accepts 03/06/09/12 for FONDPATRIMDISVAR; `build_silver`
-parses each only when the file exists. Observed FONDPATRIMDISVAR coverage is
-therefore 06/12, and the analysis layer treats it as semiannual until a real
-03/09 file appears. The download expansion (PLAN §5.2) follows those cadences.
+**Decision.** Silver keeps only the 06/12 closings of the three sources. The rule
+lives in `spark/common/cadence.py` and is used by both `build_silver` (which skips
+the three parsers on 03/09 periods) and `validate_silver` (which expects exactly
+the 06/12 periods present in Bronze and fails on any other month). The 03/09
+files of 2020–2022 stay in Bronze.
 
-**Why.** The permissive FONDPATRIMDISVAR gate matches the explanatory PDF and
-will not reject a future quarterly file; the observed data still prevents the
-dbt layer from assuming quarters that do not exist. The existence checks make
-`build_silver` idempotent across all 41 monthly periods.
+**Why.** One homogeneous semiannual series from 2020 instead of a series that
+changes frequency in 2023. No quarterly official metric is lost, because each
+FONDTRIM file reports the current quarter and the three previous ones. The
+decision is reversible without downloading again.
 
 ## estr_daily: ECB CSV read by header, try_cast and full overwrite
 
@@ -188,24 +185,19 @@ or annualizing them would silently change the meaning before dbt can document
 it. Keeping XML signs lets the dbt identity `GR = CGES + CDEP + GSE + OGGC + OGR`
 be tested directly.
 
-## fund_period_financials: nominal quarterly, observed semiannual, FI only
+## fund_period_financials: semiannual, FI only, net flows only
 
-**Problem.** The FONDPATRIMDISVAR PDF describes quarterly publication and only
-for FI. The downloaded 2023-2025 archives contain the file only at 06/12. It
-contains net subscriptions/redemptions, not gross entries and exits; the
-turnover index refers to a quarter in 03/09 and to a half-year in 06/12.
+**Problem.** FONDPATRIMDISVAR covers only FI. It contains net
+subscriptions/redemptions, not gross entries and exits, and the turnover index
+refers to the period since the previous closing.
 
-**Decision.** The parser and gates accept 03/06/09/12 and the FI universe; missing
-files produce no rows. The current Silver coverage is 06/12. The parser keeps
-`IndiceRotacionCarteraActual` and its source period semantics unchanged. The dbt
-layer labels churn and retention as proxies and never presents them as gross
-churn.
+**Decision.** The parser keeps `IndiceRotacionCarteraActual` and its source
+period semantics unchanged and follows the semiannual cadence contract above.
+The dbt layer labels churn and retention as proxies and never presents them as
+gross churn.
 
-**Why.** The permissive gate follows the official PDF without inventing 03/09
-rows; the semiannual analysis cadence follows the actual published archives.
-Using the wrong cadence would create empty periods or skip available data;
-inventing gross flows would violate the "never fabricate missing regulatory
-data" rule.
+**Why.** Inventing gross flows would violate the "never fabricate missing
+regulatory data" rule.
 
 **Profiling evidence.**
 `notebooks/exploration/03_fondpatrimdisvar__financial_contract_profiling.ipynb` verifies the
