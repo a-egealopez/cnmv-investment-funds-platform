@@ -30,6 +30,17 @@ Every month the CNMV publishes raw files covering every investment fund register
 - **Anomalies.** Which funds show unusual price, flow or fee behaviour, or figures that don't reconcile?
 - **Watchlist.** Which 20 funds rank best in their category after strict data-quality screening?
 
+## Key findings (August 2026)
+
+- **Spanish funds nearly doubled since 2020**, from €280bn to €493bn in assets.
+- **60 % of the growth of the last three years is new money**: of the €180bn added, €108bn came from net subscriptions and €72bn from market gains.
+- **Five banking groups manage two thirds of the market**: CaixaBank 22.9 %, Santander 14.3 %, BBVA 13.0 %, Kutxabank 8.0 % and Ibercaja 7.4 %. Together they hold 65.5 % of assets (68.4 % in 2020) and collect 60 % of management fee revenue.
+- **Kutxabank and Ibercaja are gaining ground**: both more than doubled their assets since 2020 (+135 % and +118 %), while the three largest grew 49–68 %. In the last three years, Ibercaja attracted new money worth 44 % of what it managed at the start, the most of the five.
+- **The three largest funds are all CaixaBank's**: CaixaBank Monetario Rendimiento (€19.0bn), CaixaBank Master Renta Fija Deuda Pública 3-10 (€9.6bn) and CaixaBank Master Renta Variable USA (€9.5bn).
+- **Large funds charge less**: funds above €1bn, 109 out of 1,667, hold 57 % of the money and charge a median 0.62 % a year in management fees. Funds below €50m, half of all funds, charge 1.06 %. So the average euro pays 0.78 %, less than the typical fund's 0.90 %.
+
+Internal analytical figures built from official CNMV data, not official CNMV statistics. Every figure comes from a query in [key_findings.sql](docs/analytics/key_findings.sql).
+
 ## Architecture
 
 ```mermaid
@@ -218,6 +229,7 @@ Workflows run with a read-only token by default, and only the publish job can wr
 | Business | [product.md](docs/business/product.md) | Problem, users, the questions the platform answers and the risks behind them |
 | Analytics | [sources.md](docs/analytics/sources.md) | Every CNMV and ECB dataset: structure, frequency, known issues |
 | | [financial_metrics.md](docs/analytics/financial_metrics.md) | Definition, formula and assumptions of every metric, and how they were validated |
+| | [key_findings.sql](docs/analytics/key_findings.sql) | The queries behind every figure in Key findings |
 | Technical | [architecture.md](docs/technical/architecture.md) | Stack, data layers, pipeline and design decisions |
 | | [parsing_decisions.md](docs/technical/parsing_decisions.md) | How each CNMV XML file is turned into a Silver table, and why |
 | dbt | [dbt docs](https://a-egealopez.github.io/cnmv-investment-funds-platform/) | Every model and column, tests and the interactive lineage graph (descriptions in Spanish) |
