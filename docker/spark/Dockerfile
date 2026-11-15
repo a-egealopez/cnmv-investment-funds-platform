@@ -1,6 +1,8 @@
 FROM python:3.12-slim
 
+# Debian security patches released after the base image was built, plus the JRE
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends default-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 

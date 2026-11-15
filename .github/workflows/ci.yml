@@ -169,13 +169,25 @@ jobs:
       - name: dbt deps
         run: dbt deps --project-dir dbt --profiles-dir dbt
 
-      # The fixture has less than 36 months of history, so its panorama is empty
+      # The fixture has less than 3 years of history, so its panorama is empty
       # by design; that test is meant for the real data.
       - name: dbt build
         run: >-
           dbt build --project-dir dbt --profiles-dir dbt --target ci
           --exclude assert_panorama_not_empty
           --vars '{as_of_period: "202605", silver_root: "tests/fixtures/silver"}'
+
+      # Docs come from the same commit as the code; the catalog holds types only, no row counts
+      - name: dbt docs
+        run: >-
+          dbt docs generate --static --project-dir dbt --profiles-dir dbt --target ci
+          --vars '{silver_root: "tests/fixtures/silver"}'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dbt-docs
+          path: dbt/target/static_index.html
+          retention-days: 7
 
   # ── Containerization and container vulnerability scanning (no publishing) ──
   docker-build:
@@ -201,7 +213,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      # exit-code "0" only reports; switch to "1" once the report is clean
+      # Report only: OS packages are patched at build time; Spark findings come from jars bundled in PySpark
       - name: Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:

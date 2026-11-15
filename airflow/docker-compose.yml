@@ -3,7 +3,7 @@
 # host first: from the repo root, `docker compose build`.
 
 # WARNING: the Docker socket is mounted so the DockerOperator can start containers.
-# That is root-equivalent on the host. Local use only; see docs/technical/airflow.md.
+# That is root-equivalent on the host. Local use only.
 
 
 x-airflow-common: &airflow-common

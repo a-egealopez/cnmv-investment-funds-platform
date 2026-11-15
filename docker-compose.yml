@@ -1,22 +1,31 @@
+# `docker compose up` runs the whole pipeline in order and stops at the first stage
+# that fails. Run a single stage with `docker compose run --rm --no-deps <stage>`.
+# SINCE sets the first period to download (default 202001).
+
 services:
   ingestion:
     image: cnmv-ingestion
     build:
       context: .
       dockerfile: docker/ingestion/Dockerfile
+    command: ["--since", "${SINCE:-202001}"]
     volumes:
       - ./data:/data
-  
+
   spark:
     image: cnmv-spark
     build:
       context: .
       dockerfile: docker/spark/Dockerfile
+    command: ["--pending"]
     environment:
       SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-3g}
     volumes:
       - ./data:/data
-  
+    depends_on:
+      ingestion:
+        condition: service_completed_successfully
+
   validate:
     image: cnmv-spark
     entrypoint: ["python", "-m", "spark.jobs.validate_silver"]
@@ -24,17 +33,37 @@ services:
       SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-3g}
     volumes:
       - ./data:/data
+    depends_on:
+      spark:
+        condition: service_completed_successfully
 
   dbt:
     image: cnmv-dbt
     build:
       context: .
       dockerfile: docker/dbt/Dockerfile
+    command: ["build"]
     volumes:
       - ./data:/data
+    depends_on:
+      validate:
+        condition: service_completed_successfully
 
   export:
     image: cnmv-dbt
     entrypoint: ["python", "-m", "bi.export_gold"]
     volumes:
       - ./data:/data
+    depends_on:
+      dbt:
+        condition: service_completed_successfully
+
+  # One-off: writes airflow/.env from values read through Docker, on any OS.
+  # Run with `docker compose run --rm airflow-setup`; never started by `up`.
+  airflow-setup:
+    image: python:3.12-slim
+    profiles: ["setup"]
+    command: ["python", "/project/airflow/setup_env.py"]
+    volumes:
+      - .:/project
+      - /var/run/docker.sock:/var/run/docker.sock
