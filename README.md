@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/github/license/a-egealopez/cnmv-investment-funds-platform)](LICENSE)
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![PySpark](https://img.shields.io/badge/PySpark-4.2-E25A1C?logo=apachespark&logoColor=white)
+![PySpark](https://img.shields.io/badge/PySpark-4.3-E25A1C?logo=apachespark&logoColor=white)
 ![dbt](https://img.shields.io/badge/dbt--core-1.12-FF694B?logo=dbt&logoColor=white)
 ![DuckDB](https://img.shields.io/badge/DuckDB-dbt--duckdb_1.11-FFF000?logo=duckdb&logoColor=black)
 ![Airflow](https://img.shields.io/badge/Airflow-3.4-017CEE?logo=apacheairflow&logoColor=white)
@@ -172,6 +172,7 @@ flowchart TB
 
 - **Explicit schemas.** Each parser reads the XML with a declared input schema and checks its output against a Silver contract.
 - **A quality gate before dbt.** Structural problems in Silver, such as missing periods, duplicate keys or wrong types, stop the pipeline. Semantic issues are reported as warnings instead.
+- **Stale data is flagged.** `dbt source freshness` warns when a CNMV or ECB source falls behind its publication cadence (monthly, semiannual or daily), so a late release never goes unnoticed.
 - **Nothing is silently dropped.** Suspicious records are quarantined with a reason and surfaced as anomalies, never deleted.
 
 ### Testing
@@ -214,7 +215,7 @@ Workflows run with a read-only token by default, and only the publish job can wr
 
 ## Results
 
-**Orchestration.** The weekly DAG in Airflow: five containerized tasks from ingestion to the BI export, run in order, with retries and never two runs at once.
+**Orchestration.** The weekly DAG in Airflow: six containerized tasks from ingestion to the BI export, run in order, with retries and never two runs at once.
 
 ![Airflow DAG](docs/images/airflow_dag.png)
 

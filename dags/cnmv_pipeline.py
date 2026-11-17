@@ -1,4 +1,4 @@
-"""CNMV pipeline: ingestion -> spark -> validate -> dbt -> export.
+"""CNMV pipeline: ingestion -> spark -> validate -> freshness -> dbt -> export.
 
 Airflow only orchestrates. Each stage is one of the project's images, started as a
 sibling container; the stage's exit code decides success or failure. The pipeline is
@@ -64,6 +64,8 @@ def cnmv_pipeline():
         "cnmv-spark",
         entrypoint=["python", "-m", "spark.jobs.validate_silver"],
     )
+    # Warns when a source is older than its publication cadence; never fails the run
+    freshness = stage("freshness", "cnmv-dbt", "source freshness")
     dbt = stage("dbt", "cnmv-dbt", "build")
     export = stage(
         "export",
@@ -71,7 +73,7 @@ def cnmv_pipeline():
         entrypoint=["python", "-m", "bi.export_gold"],
     )
 
-    ingestion >> spark >> validate >> dbt >> export
+    ingestion >> spark >> validate >> freshness >> dbt >> export
 
 
 cnmv_pipeline()

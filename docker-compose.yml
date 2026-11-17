@@ -37,6 +37,16 @@ services:
       spark:
         condition: service_completed_successfully
 
+  # Warns when a source is older than its publication cadence; never fails the run
+  freshness:
+    image: cnmv-dbt
+    command: ["source", "freshness"]
+    volumes:
+      - ./data:/data
+    depends_on:
+      validate:
+        condition: service_completed_successfully
+
   dbt:
     image: cnmv-dbt
     build:
@@ -46,7 +56,7 @@ services:
     volumes:
       - ./data:/data
     depends_on:
-      validate:
+      freshness:
         condition: service_completed_successfully
 
   export:

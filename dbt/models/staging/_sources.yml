@@ -3,6 +3,14 @@ version: 2
 sources:
   - name: silver
     description: "Parquet Silver generado por spark/jobs/build_silver.py"
+    # `dbt source freshness` warns when a source is older than its publication cadence
+    # allows. Only a warning: a late CNMV release is no reason to stop rebuilding Gold.
+    # The date is the last day of the reporting period (FechaDatos = YYYYMM).
+    # Monthly sources: the CNMV publishes with a lag of about 2-3 months.
+    config:
+      loaded_at_field: "last_day(strptime(cast(FechaDatos as varchar), '%Y%m'))::timestamp"
+      freshness:
+        warn_after: {count: 100, period: day}
     tables:
       - name: fund_nav_daily
         description: "FONDMENS: NAV, patrimonio y partícipes diarios por clase."
@@ -14,17 +22,34 @@ sources:
           external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_metadata/**/*.parquet', hive_partitioning=true)"
       - name: fund_quarterly
         description: "FONDTRIM: snapshot semestral por clase (vocación, divisas, comisiones, rentabilidad y volatilidad oficiales)."
+        config:
+          # Semiannual (06/12): six months of period plus the publication lag.
+          freshness:
+            warn_after: {count: 280, period: day}
         meta:
           external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_quarterly/**/*.parquet', hive_partitioning=true)"
       - name: fund_holdings
         description: "FONDCART: posiciones de cartera por compartimento y periodo."
+        config:
+          # Semiannual (06/12): six months of period plus the publication lag.
+          freshness:
+            warn_after: {count: 280, period: day}
         meta:
           external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_holdings/**/*.parquet', hive_partitioning=true)"
       - name: fund_period_financials
         description: "FONDPATRIMDISVAR: gastos, ingresos, flujo neto y patrimonios por compartimento y periodo."
+        config:
+          # Semiannual (06/12): six months of period plus the publication lag.
+          freshness:
+            warn_after: {count: 280, period: day}
         meta:
           external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/fund_period_financials/**/*.parquet', hive_partitioning=true)"
       - name: estr_daily
         description: "BCE: índice compuesto del €STR diario."
+        config:
+          # Daily series, downloaded weekly.
+          loaded_at_field: "value_date::timestamp"
+          freshness:
+            warn_after: {count: 10, period: day}
         meta:
           external_location: "read_parquet('{{ var('silver_root', env_var('CNMV_DATA_DIR', '../data') ~ '/silver') }}/estr_daily/**/*.parquet')"

@@ -54,11 +54,12 @@ Airflow DAG cnmv_pipeline (weekly), one DockerOperator task per stage:
 1. ingestion  download every CNMV period published since 202001 that is not yet in the manifest, plus €STR
 2. spark      parse new or changed Bronze periods into Silver (build_silver.py --pending)
 3. validate   quality gate on Silver (validate_silver.py, FINDINGS contract)
-4. dbt        dbt build: staging (views) → intermediate → dimensions, facts and marts (tables), with meta_run as the single cut-off
-5. export     Gold tables to Parquet for Power BI
+4. freshness  dbt source freshness: warns when a source is older than its publication cadence allows
+5. dbt        dbt build: staging (views) → intermediate → dimensions, facts and marts (tables), with meta_run as the single cut-off
+6. export     Gold tables to Parquet for Power BI
 ```
 
-Without Airflow, `docker compose up` runs the same five stages in order and stops at the first failure; `docker compose run --rm --no-deps <service>` runs one stage.
+Without Airflow, `docker compose up` runs the same six stages in order and stops at the first failure; `docker compose run --rm --no-deps <service>` runs one stage.
 
 ## Design Decisions
 

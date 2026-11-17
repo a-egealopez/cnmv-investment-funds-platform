@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("airflow.sdk")
 
 DAG_FILE = Path(__file__).parents[2] / "dags" / "cnmv_pipeline.py"
-STAGES = ["ingestion", "spark", "validate", "dbt", "export"]
+STAGES = ["ingestion", "spark", "validate", "freshness", "dbt", "export"]
 
 
 @pytest.fixture
