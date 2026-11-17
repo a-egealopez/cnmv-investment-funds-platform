@@ -100,16 +100,24 @@ The bridge splits each daily change in assets into what comes from prices and wh
 | Market growth | `market_effect / average_aum` | |
 | Net flow yield | `net_flows / average_aum` | |
 | Outflow share | `min(net_flows, 0) / average_aum` | |
+| Entry and exit flows | `+aum` on a class's first day, `-aum` the day after its last | Launches, closures and mergers into another fund; see below |
 | Participant retention | `holders_t / holders_{t-1}` | A proxy: an investor in two classes counts twice |
 | AUM retention | `aum_t / aum_{t-1}` | Includes the market effect |
 
 Days with mergers, capital changes or jumps (`is_capital_change`, `is_jump`) are reported apart in `corporate_action_delta_aum` and kept out of the monthly flows, so the bridge still balances.
+
+The bridge only sees a class between two of its own observations, so it misses the assets of a class that starts or stops reporting. A fund merged into another just disappears, with no outflow, while the absorbing fund records the assets as subscriptions; summed across funds, new money would be overstated (by €29bn over the three years to August 2026). `entry_exit_flows` books those movements: the first day of a class that starts inside the window adds its assets, and the day after the last observation of a class that stops before the cut-off month subtracts them. A class that misses a month and comes back is neither.
+
+- For one fund, use `net_flows`: it is the money its investors put in or took out while it was alive.
+- Across funds (a manager group, a vocation, the market), use `net_flows + entry_exit_flows`. The manager group fact already includes both.
+- Each month, net flows, market effect, corporate actions and entry and exit flows add up to the change in total market assets within 0.06% (dbt test `assert_market_aum_reconciles`).
 
 Limitations:
 
 - The CNMV only publishes net subscriptions and redemptions, so gross churn cannot be measured.
 - Month-end compartment AUM adds the last reported AUM of each class. A class that does not report on that day is missing from the sum, which affects about 0.2% of compartment-months.
 - FONDPATRIMDISVAR reports flows as a cumulative year-to-date percentage, so the comparison with the daily bridge is done on the year-to-date total at each closing.
+- Funds that invest in other Spanish funds are counted twice, in market assets and in flows: €16.6bn in June 2026, 3.6% of reported positions. Industry totals are published the same way.
 
 ## Fees and income
 
@@ -129,6 +137,8 @@ FONDPATRIMDISVAR reports expenses and income as percentages of average daily ass
 | Manager revenue estimate | `average_assets * management fee` | `management_fee_revenue`: before payments to distributors and without costs |
 | Management fee yield by group | Annualized management revenue / average assets | Weighted by assets |
 | Fee concentration | `sum(share_i^2)` of management revenue by manager group | `hhi_fee`, plus `top5_fee_share` |
+
+Everything by manager group (market share, concentration, fees and flows) uses the group that managed each fund in that month, taken from the monthly FONDREGISTRO, not its current owner. Applying today's owner to the whole history would move funds before the takeover happened: Bankia's €20bn would count as CaixaBank's in January 2020, and the top-five share of that month would read 68.4% instead of 59.3%. The dbt test `assert_manager_groups_point_in_time` checks it against FONDREGISTRO month by month.
 
 Using the management fee alone for concentration lowers the fee pool by about 7–8% and leaves the HHI almost unchanged (0.0942 vs 0.0941 in December 2025).
 

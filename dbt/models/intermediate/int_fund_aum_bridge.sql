@@ -26,6 +26,7 @@ valid_daily as (
 daily_lagged as (
     select
         v.*,
+        lag(v.value_date) over by_class as prev_value_date,
         lag(v.nav)     over by_class as prev_nav,
         lag(v.aum)     over by_class as prev_aum
     from
@@ -50,6 +51,7 @@ bridged as (
     select
         u.class_key,
         u.value_date,
+        u.prev_value_date,
         u.units,
         u.aum,
         u.nav,
@@ -83,6 +85,7 @@ bridged as (
 select
     class_key,
     value_date,
+    prev_value_date,
     units,
     aum,
     nav,

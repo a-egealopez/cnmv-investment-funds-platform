@@ -54,7 +54,8 @@ market_monthly as (
     select
         date_key,
         max(total_aum_managed) as total_aum_managed,
-        count(*) as n_manager_groups_active
+        -- Groups with assets; a group whose last fund closed that month has a row at 0
+        count(*) filter (where aum_managed > 0) as n_manager_groups_active
     from
         {{ ref('fact_manager_group_monthly') }}
     group by

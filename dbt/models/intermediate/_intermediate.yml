@@ -248,6 +248,9 @@ models:
       - name: value_date
         description: "Fecha del valor liquidativo."
         tests: [not_null]
+      - name: prev_value_date
+        description: "Fecha de la observación anterior de la clase; el puente mide el cambio entre ambas."
+        tests: [not_null]
       - name: units
         description: "Participaciones derivadas: aum / nav. No es un dato oficial de CNMV."
         tests: [not_null]
@@ -279,6 +282,69 @@ models:
           Un salto del patrimonio con el valor liquidativo estable NO es un cambio de capital:
           es dinero real entrando o saliendo.
 
+
+  - name: int_class_entry_exit
+    description: >
+      Patrimonio que entra o sale del mercado porque una clase empieza o deja de publicar dentro
+      de la ventana. Grano: class_key x event. El puente diario solo mide flujos entre dos
+      observaciones de la misma clase: un fondo que cierra o se fusiona en otro desaparece sin
+      registrar salida, mientras el fondo absorbente sí registra la entrada como suscripción, así
+      que sumar flujos entre fondos sobrestimaba el dinero nuevo. Entrada: primera observación de
+      una clase que empieza dentro de la ventana (+aum). Salida: última observación de una clase
+      que deja de publicar antes del mes de corte (-aum), con fecha del día siguiente. Una clase
+      que ya publicaba al inicio de la ventana no es entrada, una que sigue publicando en el mes
+      de corte no es salida, y una que falta un mes y vuelve no es ninguna de las dos.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [class_key, event]
+    columns:
+      - name: class_key
+        description: "Clave natural de la clase."
+        tests: [not_null]
+      - name: value_date
+        description: "Día del movimiento: primera observación (entrada) o el día siguiente a la última (salida)."
+        tests: [not_null]
+      - name: event
+        description: "entry o exit."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['entry', 'exit']
+      - name: entry_exit_flows
+        description: "Patrimonio que entra (positivo) o sale (negativo) con el alta o el cierre de la clase."
+        tests: [not_null]
+
+  - name: int_compartment_manager_group_monthly
+    description: >
+      Grupo gestor de cada compartimento en cada mes, tal como lo publicaba FONDREGISTRO entonces.
+      Grano: compartment_key x month_key. dim_compartment guarda el último grupo conocido (tipo 1),
+      que sirve para saber quién gestiona hoy el fondo pero no para la historia: aplicado a todos los
+      meses, adelanta las absorciones (los fondos de Bankia contaban como de CaixaBank en 2020, un año
+      antes de la fusión). Los hechos que siguen a los grupos en el tiempo (cuota, concentración,
+      flujos por grupo) usan este modelo con un ASOF join por mes.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [compartment_key, month_key]
+    columns:
+      - name: compartment_key
+        description: "Clave natural del compartimento."
+        tests: [not_null]
+      - name: month_key
+        description: "Mes del registro de FONDREGISTRO (YYYYMM)."
+        tests: [not_null]
+      - name: manager_group_name
+        description: "Grupo gestor publicado ese mes."
+        tests: [not_null]
+      - name: manager_group_id
+        description: "Clave hacia dim_manager_group."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_manager_group')
+                field: manager_group_id
 
   - name: int_fund_peer_ranking
     description: >

@@ -16,7 +16,7 @@
 
 Every month the CNMV publishes raw files covering every investment fund registered in Spain: daily net asset values, assets under management, number of investors, portfolio holdings, fees and income statements. On their own they are hard to use: thousands of funds, several share classes per fund, different reporting frequencies and data errors. This platform cleans, reconciles and models them into a dataset an analyst can trust.
 
-**By the numbers:** €493bn in assets under management · 2,543 fund compartments and 4,739 share classes · 123 management groups · 7.2M daily NAV records · 1.2M portfolio positions · 80 monthly periods (Jan 2020 – Aug 2026) · 256 automated data tests
+**By the numbers:** €493bn in assets under management · 2,543 fund compartments and 4,739 share classes · 123 management groups · 7.2M daily NAV records · 1.2M portfolio positions · 80 monthly periods (Jan 2020 – Aug 2026) · 270 automated data tests
 
 > Analytical signals built on public data, not investment advice. Metrics are this project's own calculations, not official CNMV figures.
 
@@ -33,9 +33,9 @@ Every month the CNMV publishes raw files covering every investment fund register
 ## Key findings (August 2026)
 
 - **Spanish funds nearly doubled since 2020**, from €280bn to €493bn in assets.
-- **60 % of the growth of the last three years is new money**: of the €180bn added, €108bn came from net subscriptions and €72bn from market gains.
-- **Five banking groups manage two thirds of the market**: CaixaBank 22.9 %, Santander 14.3 %, BBVA 13.0 %, Kutxabank 8.0 % and Ibercaja 7.4 %. Together they hold 65.5 % of assets (68.4 % in 2020) and collect 60 % of management fee revenue.
-- **Kutxabank and Ibercaja are gaining ground**: both more than doubled their assets since 2020 (+135 % and +118 %), while the three largest grew 49–68 %. In the last three years, Ibercaja attracted new money worth 44 % of what it managed at the start, the most of the five.
+- **Half of the growth of the last three years is new money**: of the €152bn added, €79bn came from investors putting in new money and €72bn from market gains (the remaining €1bn comes from mergers and other corporate operations).
+- **Five banking groups manage two thirds of the market**: CaixaBank 22.9 %, Santander 14.3 %, BBVA 13.0 %, Kutxabank 8.0 % and Ibercaja 7.4 %. Together they hold 65.5 % of assets, up from 59.3 % in 2020, and collect 60 % of management fee revenue.
+- **Kutxabank and Ibercaja grew without takeovers**: both more than doubled their assets since 2020 (+135 % and +118 %), as fast as CaixaBank (+137 %), which absorbed Bankia's €20bn on the way. In the last three years, both took in new money worth about 30 % of what they managed at the start, against 8–19 % for the three largest.
 - **The three largest funds are all CaixaBank's**: CaixaBank Monetario Rendimiento (€19.0bn), CaixaBank Master Renta Fija Deuda Pública 3-10 (€9.6bn) and CaixaBank Master Renta Variable USA (€9.5bn).
 - **Large funds charge less**: funds above €1bn, 109 out of 1,667, hold 57 % of the money and charge a median 0.62 % a year in management fees. Funds below €50m, half of all funds, charge 1.06 %. So the average euro pays 0.78 %, less than the typical fund's 0.90 %.
 
@@ -177,7 +177,7 @@ flowchart TB
 
 ### Testing
 
-- **Checked against official figures.** 256 dbt tests cover keys, value ranges, accounting identities and reconciliation with CNMV figures, and integration tests match the official quarterly returns within a median 0.003 pp.
+- **Checked against official figures.** 270 dbt tests cover keys, value ranges, accounting identities and reconciliation with CNMV figures, and integration tests match the official quarterly returns within a median 0.003 pp.
 - **Rules as code.** A dbt test enforces the layer conventions on the model graph, and every threshold in `dbt_project.yml` documents its origin.
 
 ## Design trade-offs

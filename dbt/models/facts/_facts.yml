@@ -304,6 +304,9 @@ models:
   - name: fact_compartment_monthly
     description: >
       Flujos mensuales por compartimento. Grano: compartment_id x date_key (último día del mes).
+      Cada mes cumple: variación del patrimonio = net_flows + market_effect +
+      corporate_action_delta_aum + entry_exit_flows (assert_market_aum_reconciles lo comprueba
+      contra el total del mercado).
       El puente diario es de clase y aquí se agrega a compartimento, que es la granularidad de
       FONDPATRIMDISVAR. Las comisiones y gastos son semestrales y viven en
       fact_fund_period_financials, no aquí: mezclar ambos grains dejaba las columnas de comisión
@@ -335,13 +338,24 @@ models:
       - name: average_aum
         description: "Patrimonio medio del mes; es la base de los rendimientos."
       - name: net_flows
-        description: "Flujo neto del mes: suscripciones menos reembolsos."
+        description: >
+          Flujo neto del mes: suscripciones menos reembolsos de las clases que siguen publicando.
+          No incluye el patrimonio de las clases que nacen o cierran (entry_exit_flows): para sumar
+          flujos entre fondos, súmense ambas columnas.
       - name: market_effect
         description: "Cambio del patrimonio atribuible al valor liquidativo."
       - name: delta_aum
         description: "Cambio del patrimonio en el mes sin operaciones corporativas (días con cambio de capital o salto de precio). Cumple net_flows + market_effect = delta_aum."
       - name: corporate_action_delta_aum
         description: "Cambio del patrimonio en los días excluidos por ser operaciones corporativas (fusión, cambio de clase, descapitalización). No es flujo ni efecto mercado."
+      - name: entry_exit_flows
+        description: >
+          Patrimonio de las clases que empiezan (positivo) o dejan de publicar (negativo) en el mes:
+          lanzamientos, cierres y fusiones en otro fondo. El puente diario no los ve. Al sumar
+          compartimentos, net_flows + entry_exit_flows es el dinero nuevo del mercado; sin esta
+          columna, un fondo absorbido en una fusión desaparece sin salida mientras el absorbente
+          registra la entrada. El mes en que cierra la última clase de un compartimento hay una fila
+          con aum = 0 y solo este movimiento.
       - name: net_flow_yield
         description: "Flujo neto sobre el patrimonio medio del mes."
       - name: market_growth
@@ -411,6 +425,9 @@ models:
       market_share es la cuota de patrimonio del grupo sobre el total gestionado en el mes.
       Los ingresos usan solo la comisión de gestión y solo existen en los cierres semestrales.
       Los flujos separan el crecimiento orgánico (clientes) del de mercado.
+      Cada fondo cuenta para el grupo que lo gestionaba ese mes (int_compartment_manager_group_monthly),
+      no para el actual: la historia de cuotas no adelanta las absorciones (en 2020 Bankia aparece
+      como grupo propio, no dentro de CaixaBank). assert_manager_groups_point_in_time lo comprueba.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -433,7 +450,7 @@ models:
                 to: ref('dim_manager_group')
                 field: manager_group_id
       - name: rank_by_aum
-        description: "Posición del grupo por patrimonio gestionado en el mes."
+        description: "Posición del grupo por patrimonio gestionado en el mes. Nula el mes en que cerró su último fondo."
       - name: n_manager_groups
         description: "Grupos gestoras con patrimonio en el mes."
       - name: aum_managed
@@ -449,7 +466,12 @@ models:
       - name: management_fee_yield_annualized_rate
         description: "Comisión de gestión media anualizada del grupo, ponderada por patrimonio (ingreso anualizado / patrimonio medio). Dice quién cobra más por euro gestionado."
       - name: net_flows
-        description: "Flujo neto del mes del grupo: suma de los compartimentos, sin operaciones corporativas. Es dinero aportado o retirado por los clientes."
+        description: >
+          Flujo neto del mes del grupo: suma de los flujos de sus compartimentos más las altas y
+          cierres de clases (entry_exit_flows), sin operaciones corporativas. Es dinero aportado o
+          retirado por los clientes. Sin las altas y cierres, un fondo fusionado en otro contaba como
+          dinero nuevo: el absorbente registra la suscripción y el absorbido desaparece sin salida.
+          El mes en que cierra el último fondo del grupo hay una fila con aum_managed = 0.
       - name: market_effect
         description: "Efecto mercado del mes del grupo: variación del patrimonio por la evolución de los precios."
       - name: net_flow_yield

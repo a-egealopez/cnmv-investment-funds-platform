@@ -1,5 +1,6 @@
--- Net flows by manager group must add up to the compartment flows of the month
--- (no compartment has an unknown manager group, so nothing is left out).
+-- Net flows by manager group must add up to the compartment flows of the month,
+-- including entries and exits of classes (no compartment has an unknown manager
+-- group, so nothing is left out).
 with by_group as (
     select date_key, sum(net_flows) as group_flows
     from {{ ref('fact_manager_group_monthly') }}
@@ -7,7 +8,7 @@ with by_group as (
 ),
 
 by_compartment as (
-    select m.date_key, sum(m.net_flows) as compartment_flows
+    select m.date_key, sum(m.net_flows + m.entry_exit_flows) as compartment_flows
     from {{ ref('fact_compartment_monthly') }} as m
     inner join {{ ref('dim_compartment') }} as c
         on c.compartment_id = m.compartment_id

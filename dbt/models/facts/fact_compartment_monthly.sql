@@ -44,15 +44,53 @@ monthly_aum as (
     group by 1, 2
 ),
 
+-- Assets of classes that start or stop reporting (launches, closures and mergers
+-- into another fund), which the daily bridge cannot see. See int_class_entry_exit.
+entry_exit_monthly as (
+    select
+        c.compartment_key,
+        {{ month_key_of('e.value_date') }} as month_key,
+        sum(e.entry_exit_flows) as entry_exit_flows
+    from
+        {{ ref('int_class_entry_exit') }} as e
+    inner join {{ ref('dim_class') }} as c
+        on c.class_key = e.class_key
+    group by
+        1, 2
+),
+
+-- One row per compartment and month with flows or an entry/exit. A compartment
+-- whose last class has closed gets one more row, the month it closed, with
+-- aum = 0 and the exit as its only movement.
+compartment_months as (
+    select compartment_key, month_key from flows_raw
+    union
+    select compartment_key, month_key from entry_exit_monthly
+),
+
 monthly_flows as (
     select
-        r.*,
-        a.aum,
+        k.compartment_key,
+        k.month_key,
+        coalesce(r.net_flows, 0) as net_flows,
+        coalesce(r.market_effect, 0) as market_effect,
+        coalesce(r.delta_aum, 0) as delta_aum,
+        coalesce(r.corporate_action_delta_aum, 0) as corporate_action_delta_aum,
+        coalesce(ee.entry_exit_flows, 0) as entry_exit_flows,
+        coalesce(r.n_capital_changes, 0) as n_capital_changes,
+        coalesce(r.n_jumps, 0) as n_jumps,
+        coalesce(a.aum, 0) as aum,
         a.average_aum
-    from flows_raw as r
-    inner join monthly_aum as a
-        on a.compartment_key = r.compartment_key
-        and a.month_key = r.month_key
+    from compartment_months as k
+    left join flows_raw as r
+        on r.compartment_key = k.compartment_key
+        and r.month_key = k.month_key
+    left join entry_exit_monthly as ee
+        on ee.compartment_key = k.compartment_key
+        and ee.month_key = k.month_key
+    left join monthly_aum as a
+        on a.compartment_key = k.compartment_key
+        and a.month_key = k.month_key
 ),
 
 -- Holders at the last reported day of the month in each class.
@@ -121,6 +159,7 @@ monthly_metrics as (
         f.market_effect,
         f.delta_aum,
         f.corporate_action_delta_aum,
+        f.entry_exit_flows,
 
         f.net_flows / nullif(f.average_aum, 0) as net_flow_yield,
         f.market_effect / nullif(f.average_aum, 0) as market_growth,        
@@ -151,7 +190,7 @@ monthly_metrics as (
 
     from
         monthly_flows as f
-    inner join holders_with_previous as hp
+    left join holders_with_previous as hp
         on hp.compartment_key = f.compartment_key
         and hp.month_key = f.month_key
 )
@@ -165,6 +204,7 @@ select
     m.market_effect,
     m.delta_aum,
     m.corporate_action_delta_aum,
+    m.entry_exit_flows,
     m.net_flow_yield,
     m.market_growth,
     m.total_growth,

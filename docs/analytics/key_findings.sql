@@ -20,20 +20,32 @@ where date_key in (
 order by date_key;
 
 
--- 2. Where the growth of the last three years came from: new money (net flows)
---    against market gains. The monthly flow fact covers the 3-year window only.
+-- 2. Where the growth of the last three years came from: new money against market
+--    gains. The monthly flow fact covers the 3-year window only. New money is
+--    net_flows + entry_exit_flows: summed across funds, net_flows alone would count a
+--    fund merged into another as new money (see entry_exit_flows in dbt docs).
+--    The four parts add up to the change in total assets (dbt test
+--    assert_market_aum_reconciles).
 select
     min(date_key) as first_month,
     max(date_key) as last_month,
-    round(sum(delta_aum) / 1e9, 1) as aum_change_eur_bn,
-    round(sum(net_flows) / 1e9, 1) as net_flows_eur_bn,
-    round(sum(market_effect) / 1e9, 1) as market_effect_eur_bn,
-    round(100 * sum(net_flows) / (sum(net_flows) + sum(market_effect)), 0) as flows_share_pct
+    round(sum(net_flows + market_effect + corporate_action_delta_aum + entry_exit_flows) / 1e9, 1)
+        as aum_change_eur_bn,
+    round(sum(net_flows + entry_exit_flows) / 1e9, 1) as new_money_eur_bn,
+    round(sum(market_effect) / 1e9, 1) as market_gains_eur_bn,
+    round(sum(corporate_action_delta_aum) / 1e9, 1) as corporate_actions_eur_bn,
+    round(
+        100 * sum(net_flows + entry_exit_flows)
+        / sum(net_flows + market_effect + corporate_action_delta_aum + entry_exit_flows),
+        0
+    ) as new_money_share_pct
 from fact_compartment_monthly;
 
 
 -- 3. Concentration: the five largest manager groups at the cut-off, their share of
 --    assets and how much their assets grew since the first month of history.
+--    Groups are point in time: a fund counts for the group that managed it each month,
+--    so CaixaBank's 2020 assets do not include Bankia, which it absorbed in 2021.
 with
 bounds as (
     select min(date_key) as first_key, max(date_key) as last_key
@@ -64,7 +76,8 @@ left join fact_manager_group_monthly as s
 order by t.rank_by_aum;
 
 
--- 4. Combined share of the five largest groups in the first month of history.
+-- 4. Combined share of the five largest groups in the first month of history
+--    (CaixaBank, BBVA, Santander, Bankia and Kutxabank in January 2020).
 select
     date_key,
     round(100 * sum(market_share), 1) as top5_share_pct
@@ -75,42 +88,44 @@ where
 group by date_key;
 
 
--- 5. New money over the last three years for the largest groups, in euros and as a
---    share of the assets each group managed just before the window started.
+-- 5. New money over the last three years for the five largest groups, as a share of
+--    the assets each group managed just before the window started. The group's
+--    net_flows already include the funds it launched, closed or merged away.
 with
-flows as (
-    select
-        manager_group_id,
-        min(date_key) as first_flow_key,
-        sum(net_flows) as net_flows,
-        sum(market_effect) as market_effect
+window_months as (
+    select min(date_key) as first_key, max(date_key) as last_key
     from fact_manager_group_monthly
     where net_flows is not null
-    group by manager_group_id
 ),
 
-start_aum as (
-    select f.manager_group_id, f.aum_managed
-    from fact_manager_group_monthly as f
-    where f.date_key = (
-        select max(date_key)
-        from fact_manager_group_monthly
-        where date_key < (select min(first_flow_key) from flows)
-    )
+start_key as (
+    select max(f.date_key) as date_key
+    from fact_manager_group_monthly as f, window_months as w
+    where f.date_key < w.first_key
+),
+
+groups as (
+    select
+        f.manager_group_id,
+        max(f.aum_managed) filter (where f.date_key = (select date_key from start_key)) as start_aum,
+        max(f.rank_by_aum) filter (where f.date_key = w.last_key) as rank_by_aum,
+        sum(f.net_flows) as new_money,
+        sum(f.market_effect) as market_gains
+    from fact_manager_group_monthly as f, window_months as w
+    group by f.manager_group_id
 )
 
 select
-    g.manager_group_name,
-    round(fl.net_flows / 1e9, 1) as net_flows_eur_bn,
-    round(fl.market_effect / 1e9, 1) as market_effect_eur_bn,
-    round(100 * fl.net_flows / s.aum_managed, 0) as net_flows_pct_of_start_aum
-from flows as fl
-inner join start_aum as s
-    on s.manager_group_id = fl.manager_group_id
-inner join dim_manager_group as g
-    on g.manager_group_id = fl.manager_group_id
-order by fl.net_flows desc
-limit 5;
+    g.rank_by_aum,
+    d.manager_group_name,
+    round(g.new_money / 1e9, 1) as new_money_eur_bn,
+    round(g.market_gains / 1e9, 1) as market_gains_eur_bn,
+    round(100 * g.new_money / g.start_aum, 0) as new_money_pct_of_start_aum
+from groups as g
+inner join dim_manager_group as d
+    on d.manager_group_id = g.manager_group_id
+where g.rank_by_aum <= 5
+order by g.rank_by_aum;
 
 
 -- 6. The largest funds at the cut-off.
