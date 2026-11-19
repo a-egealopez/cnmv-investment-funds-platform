@@ -20,3 +20,5 @@ AGENTS.md
 docs/dbt_docs/
 /.env
 .coverage
+/plan_finde_*
+/ROADMAP.md

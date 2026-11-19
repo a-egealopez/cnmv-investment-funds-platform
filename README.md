@@ -16,7 +16,7 @@
 
 Every month the CNMV publishes raw files covering every investment fund registered in Spain: daily net asset values, assets under management, number of investors, portfolio holdings, fees and income statements. On their own they are hard to use: thousands of funds, several share classes per fund, different reporting frequencies and data errors. This platform cleans, reconciles and models them into a dataset an analyst can trust.
 
-**By the numbers:** €493bn in assets under management · 2,543 fund compartments and 4,739 share classes · 123 management groups · 7.2M daily NAV records · 1.2M portfolio positions · 80 monthly periods (Jan 2020 – Aug 2026) · 270 automated data tests
+**By the numbers:** €493bn in assets under management · 2,543 fund compartments and 4,739 share classes · 123 management groups · 7.2M daily NAV records · 1.2M portfolio positions · 80 monthly periods (Jan 2020 – Aug 2026) · 271 automated data tests
 
 > Analytical signals built on public data, not investment advice. Metrics are this project's own calculations, not official CNMV figures.
 
@@ -177,7 +177,7 @@ flowchart TB
 
 ### Testing
 
-- **Checked against official figures.** 270 dbt tests cover keys, value ranges, accounting identities and reconciliation with CNMV figures, and integration tests match the official quarterly returns within a median 0.003 pp.
+- **Checked against official figures.** 271 dbt tests cover keys, value ranges, accounting identities and reconciliation with CNMV figures, and integration tests match the official quarterly returns within a median 0.003 pp.
 - **Rules as code.** A dbt test enforces the layer conventions on the model graph, and every threshold in `dbt_project.yml` documents its origin.
 
 ## Design trade-offs

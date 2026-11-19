@@ -18,7 +18,9 @@ weeks as (
 ),
 
 weekly_index as (
-    -- Last published index value on or before the week end (Sunday).
+    -- Last published index value on or before the week end (Sunday), and never
+    -- after the cut-off: the last week can end after as_of_date (a Monday cut-off
+    -- leaves six days of it in the future), and the ECB data may already cover them.
     select
         w.week_end_date,
         i.value_date as estr_date,
@@ -27,7 +29,9 @@ weekly_index as (
     asof join (
         select value_date, series_value
         from {{ ref('stg_estr_daily') }}
-        where series = '{{ var("estr_series") }}'
+        where
+            series = '{{ var("estr_series") }}'
+            and value_date <= (select as_of_date from bounds)
     ) as i
         on w.week_end_date >= i.value_date
 )

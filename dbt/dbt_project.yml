@@ -1,5 +1,5 @@
 name: cnmv
-version: "0.1.0"
+version: "1.0.0"
 config-version: 2
 profile: cnmv
 
@@ -81,14 +81,18 @@ vars:
   # Flows, commissions and data quality.
   min_downside_dev: 0.001
     # Floor of the annualized downward deviation.
-    # Origin: provisional calibration of this session. Base: percentile 1 of 0.00083, percentile 5 of 0.00179 and median of 0.0358.
+    # Origin: project decision, set from the distribution of 3-year downside deviations.
+    # Base: percentile 1 of 0.00083, percentile 5 of 0.00179 and median of 0.0358.
   max_outflow_yield: -0.10
     # Maximum heritage decline due to net outflows.
-    # Origin: uncalibrated proposal. Base: pending measurement on the flows series.
+    # Origin: project decision, not calibrated against an external benchmark. Only raises
+    # a warn anomaly. Base: flags 1,618 of 61,069 compartment-months (2.6%), cut-off 202608.
   max_fee_yield: 0.05
     # Maximum expense yield over heritage, as a fraction (0.05 = 5%).
     # Used to flag fee outliers in the monthly mart; it does not remove rows.
-    # Origin: uncalibrated proposal. Base: pending measurement on the commissions series.
+    # Origin: project decision, not calibrated against an external benchmark.
+    # Base: median expense yield 0.72% and percentile 99 of 3.15%; flags 62 of 21,784
+    # compartment closings, cut-off 202608.
   max_abs_flow_yield: 0.50
     # Absolute net flow yield from which a month is flagged as an outlier.
     # Flag only (is_flow_outlier); it does not remove rows or change selection.
@@ -101,7 +105,8 @@ vars:
     # Origin: project decision. Base: a pure AUM jump with stable NAV is a real flow.
   max_recon_error: 0.01
     # Maximum reconciliation error between FONDMENS and FONDTRIM.
-    # Origin: uncalibrated proposal. Base: pending measurement on common closings.
+    # Origin: project decision, not calibrated against an external benchmark.
+    # Base: flags 119 class closings where the two sources differ by more than 1%, cut-off 202608.
 model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
