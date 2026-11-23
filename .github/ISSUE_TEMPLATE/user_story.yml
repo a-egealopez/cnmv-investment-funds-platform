@@ -1,0 +1,35 @@
+name: User story
+description: A feature that delivers value to a user
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: Story
+      value: "As a <user>, I want <capability> so that <benefit>."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Each criterion must be verifiable (yes/no).
+      value: |
+        - [ ] 
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Design notes, risks and scope that can be cut if needed.
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Leave unticked when creating the issue; tick them before closing.
+      options:
+        - label: Tests added or updated
+        - label: CI is green and the local pipeline is unaffected
+        - label: Documentation updated
+        - label: Lineage to the CNMV source preserved
