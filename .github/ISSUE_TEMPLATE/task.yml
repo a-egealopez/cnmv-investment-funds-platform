@@ -1,0 +1,23 @@
+name: Task
+description: Technical or maintenance work with no direct user-facing feature
+labels: ["chore"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this task achieves, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Checklist
+      value: |
+        - [ ] 
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
